@@ -3,6 +3,7 @@ import {
   CURRENT_SEASON,
   HISTORICAL_LINES_2023,
   HISTORICAL_LINES_2024,
+  HISTORICAL_LINES_2025,
   type ConsensusLines,
   type SeasonConsensus,
 } from "./consensus";
@@ -63,6 +64,7 @@ function expandConsensus(consensus: ConsensusLines | undefined): PropLine[] {
 
 function consensusForSeason(season: number): SeasonConsensus | undefined {
   if (season === CURRENT_SEASON) return CURRENT_LINES;
+  if (season === 2025) return HISTORICAL_LINES_2025;
   if (season === 2024) return HISTORICAL_LINES_2024;
   if (season === 2023) return HISTORICAL_LINES_2023;
   return undefined;
@@ -80,4 +82,4 @@ export function getSeasonResult(
   return findResult(playerId, season) ?? null;
 }
 
-export const HISTORICAL_SEASONS = [2024, 2023] as const;
+export const HISTORICAL_SEASONS = [2025, 2024, 2023] as const;

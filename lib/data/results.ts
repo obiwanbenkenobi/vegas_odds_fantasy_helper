@@ -3,6 +3,42 @@ import type { SeasonResult } from "../types";
 // Sample season-end stats for marquee fantasy players. These are
 // approximate and intended to illustrate the "lines vs. actual" view.
 
+export const RESULTS_2025: SeasonResult[] = [
+  { playerId: "josh-allen", season: 2025, stats: { passing_yards: 4000, passing_tds: 30, interceptions: 10, rushing_yards: 550, rushing_tds: 10 }, positionFinish: 1 },
+  { playerId: "patrick-mahomes", season: 2025, stats: { passing_yards: 3800, passing_tds: 26, interceptions: 10, rushing_yards: 350, rushing_tds: 4 }, positionFinish: 8 },
+  { playerId: "lamar-jackson", season: 2025, stats: { passing_yards: 3200, passing_tds: 26, interceptions: 6, rushing_yards: 600, rushing_tds: 3 }, positionFinish: 10 },
+  { playerId: "jalen-hurts", season: 2025, stats: { passing_yards: 3400, passing_tds: 22, interceptions: 6, rushing_yards: 550, rushing_tds: 12 }, positionFinish: 5 },
+  { playerId: "joe-burrow", season: 2025, stats: { passing_yards: 1800, passing_tds: 13, interceptions: 5, rushing_yards: 60, rushing_tds: 1 }, positionFinish: 30 },
+  { playerId: "cj-stroud", season: 2025, stats: { passing_yards: 3400, passing_tds: 22, interceptions: 9, rushing_yards: 230, rushing_tds: 2 }, positionFinish: 15 },
+  { playerId: "jayden-daniels", season: 2025, stats: { passing_yards: 2800, passing_tds: 20, interceptions: 7, rushing_yards: 500, rushing_tds: 4 }, positionFinish: 16 },
+  { playerId: "dak-prescott", season: 2025, stats: { passing_yards: 4300, passing_tds: 30, interceptions: 11, rushing_yards: 100, rushing_tds: 1 }, positionFinish: 6 },
+  { playerId: "christian-mccaffrey", season: 2025, stats: { rushing_yards: 1100, rushing_tds: 9, receiving_yards: 700, receptions: 80, receiving_tds: 4 }, positionFinish: 3 },
+  { playerId: "saquon-barkley", season: 2025, stats: { rushing_yards: 1250, rushing_tds: 9, receiving_yards: 300, receptions: 35, receiving_tds: 2 }, positionFinish: 9 },
+  { playerId: "bijan-robinson", season: 2025, stats: { rushing_yards: 1350, rushing_tds: 11, receiving_yards: 550, receptions: 65, receiving_tds: 2 }, positionFinish: 4 },
+  { playerId: "jahmyr-gibbs", season: 2025, stats: { rushing_yards: 1450, rushing_tds: 13, receiving_yards: 450, receptions: 55, receiving_tds: 2 }, positionFinish: 2 },
+  { playerId: "derrick-henry", season: 2025, stats: { rushing_yards: 1300, rushing_tds: 12, receiving_yards: 100, receptions: 12, receiving_tds: 0 }, positionFinish: 7 },
+  { playerId: "jonathan-taylor", season: 2025, stats: { rushing_yards: 1650, rushing_tds: 17, receiving_yards: 280, receptions: 32, receiving_tds: 2 }, positionFinish: 1 },
+  { playerId: "breece-hall", season: 2025, stats: { rushing_yards: 900, rushing_tds: 6, receiving_yards: 350, receptions: 45, receiving_tds: 1 }, positionFinish: 20 },
+  { playerId: "kyren-williams", season: 2025, stats: { rushing_yards: 1100, rushing_tds: 10, receiving_yards: 150, receptions: 25, receiving_tds: 1 }, positionFinish: 12 },
+  { playerId: "de-von-achane", season: 2025, stats: { rushing_yards: 1000, rushing_tds: 8, receiving_yards: 500, receptions: 60, receiving_tds: 4 }, positionFinish: 6 },
+  { playerId: "ja-marr-chase", season: 2025, stats: { receiving_yards: 1300, receptions: 110, receiving_tds: 9 }, positionFinish: 2 },
+  { playerId: "justin-jefferson", season: 2025, stats: { receiving_yards: 1250, receptions: 90, receiving_tds: 7 }, positionFinish: 6 },
+  { playerId: "ceedee-lamb", season: 2025, stats: { receiving_yards: 1100, receptions: 85, receiving_tds: 7 }, positionFinish: 10 },
+  { playerId: "amon-ra-st-brown", season: 2025, stats: { receiving_yards: 1350, receptions: 115, receiving_tds: 11 }, positionFinish: 1 },
+  { playerId: "puka-nacua", season: 2025, stats: { receiving_yards: 1400, receptions: 110, receiving_tds: 8 }, positionFinish: 3 },
+  { playerId: "tyreek-hill", season: 2025, stats: { receiving_yards: 265, receptions: 21, receiving_tds: 1 }, positionFinish: 80 },
+  { playerId: "aj-brown", season: 2025, stats: { receiving_yards: 950, receptions: 65, receiving_tds: 7 }, positionFinish: 20 },
+  { playerId: "garrett-wilson", season: 2025, stats: { receiving_yards: 750, receptions: 65, receiving_tds: 5 }, positionFinish: 35 },
+  { playerId: "drake-london", season: 2025, stats: { receiving_yards: 1100, receptions: 85, receiving_tds: 8 }, positionFinish: 12 },
+  { playerId: "malik-nabers", season: 2025, stats: { receiving_yards: 250, receptions: 20, receiving_tds: 2 }, positionFinish: 85 },
+  { playerId: "nico-collins", season: 2025, stats: { receiving_yards: 1050, receptions: 70, receiving_tds: 6 }, positionFinish: 15 },
+  { playerId: "travis-kelce", season: 2025, stats: { receiving_yards: 800, receptions: 75, receiving_tds: 4 }, positionFinish: 6 },
+  { playerId: "sam-laporta", season: 2025, stats: { receiving_yards: 650, receptions: 55, receiving_tds: 5 }, positionFinish: 10 },
+  { playerId: "trey-mcbride", season: 2025, stats: { receiving_yards: 1100, receptions: 105, receiving_tds: 8 }, positionFinish: 1 },
+  { playerId: "brock-bowers", season: 2025, stats: { receiving_yards: 850, receptions: 75, receiving_tds: 7 }, positionFinish: 4 },
+  { playerId: "george-kittle", season: 2025, stats: { receiving_yards: 700, receptions: 50, receiving_tds: 6 }, positionFinish: 7 },
+];
+
 export const RESULTS_2024: SeasonResult[] = [
   { playerId: "josh-allen", season: 2024, stats: { passing_yards: 3731, passing_tds: 28, interceptions: 6, rushing_yards: 531, rushing_tds: 12 }, positionFinish: 2 },
   { playerId: "patrick-mahomes", season: 2024, stats: { passing_yards: 3928, passing_tds: 26, interceptions: 11, rushing_yards: 307, rushing_tds: 2 }, positionFinish: 11 },
@@ -76,6 +112,13 @@ export function findResult(
   playerId: string,
   season: number,
 ): SeasonResult | undefined {
-  const set = season === 2024 ? RESULTS_2024 : season === 2023 ? RESULTS_2023 : [];
+  const set =
+    season === 2025
+      ? RESULTS_2025
+      : season === 2024
+        ? RESULTS_2024
+        : season === 2023
+          ? RESULTS_2023
+          : [];
   return set.find((r) => r.playerId === playerId);
 }
