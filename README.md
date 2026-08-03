@@ -63,6 +63,9 @@ and platform-specific ADP from the public
 [Draft Sharks ADP market board](https://www.draftsharks.com/adp). Available
 platforms depend on scoring format: Sleeper supports PPR, half-PPR, and standard;
 ESPN supports PPR; Yahoo supports half-PPR; and CBS supports PPR and standard.
+When Half PPR is selected for a platform without Half PPR ADP, the board uses
+that platform's PPR ADP and labels the fallback while keeping Vegas points in
+Half PPR.
 Changing the platform recalculates every comparison, value match, and draft-room
 recommendation. Player identity and headshots come from Sleeper's public NFL
 player directory. When a player is selected or expanded, the app also loads the

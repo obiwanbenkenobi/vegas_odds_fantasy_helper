@@ -426,18 +426,42 @@ function adpFor(
   scoring: LiveScoringSystem,
   platform: AdpPlatform = "consensus",
 ): number | null {
+  const adpScoring = adpScoringForPlatform(platform, scoring);
   if (platform === "consensus") {
     return (
-      player?.adp?.[scoring]?.overall ??
-      player?.adpByPlatform?.consensus?.[scoring]?.overall ??
+      player?.adp?.[adpScoring]?.overall ??
+      player?.adpByPlatform?.consensus?.[adpScoring]?.overall ??
       null
     );
   }
-  return player?.adpByPlatform?.[platform]?.[scoring]?.overall ?? null;
+  return player?.adpByPlatform?.[platform]?.[adpScoring]?.overall ?? null;
 }
 
-function adpPlatformLabel(platform: AdpPlatform): string {
-  return ADP_PLATFORM_LABELS[platform];
+function adpScoringForPlatform(
+  platform: AdpPlatform,
+  scoring: LiveScoringSystem,
+): LiveScoringSystem {
+  if (
+    scoring === "half_ppr" &&
+    (platform === "espn" || platform === "cbs")
+  ) {
+    return "ppr";
+  }
+  return scoring;
+}
+
+function usesPprAdpFallback(
+  platform: AdpPlatform,
+  scoring: LiveScoringSystem,
+): boolean {
+  return scoring === "half_ppr" && adpScoringForPlatform(platform, scoring) === "ppr";
+}
+
+function adpPlatformLabel(
+  platform: AdpPlatform,
+  scoring: LiveScoringSystem,
+): string {
+  return `${ADP_PLATFORM_LABELS[platform]}${usesPprAdpFallback(platform, scoring) ? " PPR" : ""}`;
 }
 
 function formatAdp(value: number | null): string {
@@ -511,7 +535,13 @@ function AdpPlatformSelector({
   onChange: (platform: AdpPlatform) => void;
 }) {
   const available =
-    context?.platforms.filter((platform) => (platform.playerCounts[scoring] ?? 0) > 0) ?? [];
+    context?.platforms.filter(
+      (platform) =>
+        (platform.playerCounts[
+          adpScoringForPlatform(platform.key, scoring)
+        ] ?? 0) > 0,
+    ) ?? [];
+  const selectedUsesPprFallback = usesPprAdpFallback(value, scoring);
   if (available.length === 0) return null;
 
   return (
@@ -523,6 +553,11 @@ function AdpPlatformSelector({
         <div className="mt-0.5 text-xs text-[#69736d]">
           Every ADP rank and recommendation below uses the selected draft room.
         </div>
+        {selectedUsesPprFallback && (
+          <div className="mt-1 text-[10px] font-semibold text-[#8f4029]">
+            {ADP_PLATFORM_LABELS[value]} does not publish Half PPR ADP here, so PPR ADP is used. Vegas points remain Half PPR.
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="ADP platform">
         {available.map((platform) => (
@@ -538,8 +573,15 @@ function AdpPlatformSelector({
             }`}
           >
             {platform.label}
+            {usesPprAdpFallback(platform.key, scoring) && (
+              <span className={`ml-1 text-[8px] uppercase tracking-[0.06em] ${value === platform.key ? "text-[#dcebe1]" : "text-[#9a4a33]"}`}>
+                PPR
+              </span>
+            )}
             <span className={`ml-1.5 font-mono text-[9px] ${value === platform.key ? "text-[#cde0d4]" : "text-[#919995]"}`}>
-              {platform.playerCounts[scoring]}
+              {platform.playerCounts[
+                adpScoringForPlatform(platform.key, scoring)
+              ]}
             </span>
           </button>
         ))}
@@ -1222,7 +1264,7 @@ function PlayerSearch({
                     {postedLineSummary(player, 1)[0] ?? "No posted line"}
                   </span>
                   <span className="block text-[9px] text-[#7c8580]">
-                    {adpPlatformLabel(adpPlatform)} {formatAdp(adpFor(player, scoring, adpPlatform))}
+                    {adpPlatformLabel(adpPlatform, scoring)} {formatAdp(adpFor(player, scoring, adpPlatform))}
                   </span>
                 </span>
               </button>
@@ -1322,7 +1364,7 @@ function ComparisonSummary({
         {mode === "draft" && (
           <div className="border-t border-[#e1ddd4] pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
             <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#7c8580]">
-              {adpPlatformLabel(adpPlatform)} ADP
+              {adpPlatformLabel(adpPlatform, scoring)} ADP
             </div>
             <div className="mt-1 font-mono text-3xl font-semibold text-[#25352d]">
               {formatAdp(adp)}
@@ -1666,7 +1708,7 @@ function ComparisonWorkspace({
                 <strong className="font-mono text-[#30463a]">
                   {Math.abs(adpDifference).toFixed(0)} picks
                 </strong>{" "}
-                apart by {adpPlatformLabel(adpPlatform)} ADP
+                apart by {adpPlatformLabel(adpPlatform, scoring)} ADP
               </div>
             )}
           </div>
@@ -1896,7 +1938,7 @@ function DraftMatchPlayer({
           {formatAdp(adp)}
         </div>
         <div className="text-[9px] uppercase tracking-[0.08em] text-[#6f7973]">
-          {adpPlatformLabel(adpPlatform)} ADP · round / pick {formatRoundPick(adp)}
+          {adpPlatformLabel(adpPlatform, scoring)} ADP · round / pick {formatRoundPick(adp)}
         </div>
       </div>
     </div>
@@ -1944,9 +1986,14 @@ function DraftValueTargets({
         </div>
         {selectedPlatform && (
           <div className="text-[10px] leading-4 text-[#7a837e] sm:text-right">
-            {selectedPlatform.label} ADP through {selectedPlatform.updatedAt}
+            {adpPlatformLabel(adpPlatform, scoring)} ADP through {selectedPlatform.updatedAt}
             <br />
-            {formatNumber(selectedPlatform.playerCounts[scoring] ?? 0, 0)} players tracked
+            {formatNumber(
+              selectedPlatform.playerCounts[
+                adpScoringForPlatform(adpPlatform, scoring)
+              ] ?? 0,
+              0,
+            )} players tracked
           </div>
         )}
       </div>
@@ -2205,7 +2252,7 @@ function VegasAdpMispricing({
           Where the sportsbooks and draft rooms disagree
         </h2>
         <p className="mt-1 text-xs leading-5 text-[#707a74]">
-          Players are ranked only against the same position with the exact same posted market set. The Vegas slot maps that production rank onto the current {adpPlatformLabel(adpPlatform)} ADP curve.
+          Players are ranked only against the same position with the exact same posted market set. The Vegas slot maps that production rank onto the current {adpPlatformLabel(adpPlatform, scoring)} ADP curve.
         </p>
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
@@ -2955,7 +3002,10 @@ export function OddsDashboard() {
   const availableAdpPlatforms = useMemo(
     () =>
       data?.adpContext?.platforms.filter(
-        (platform) => (platform.playerCounts[scoring] ?? 0) > 0,
+        (platform) =>
+          (platform.playerCounts[
+            adpScoringForPlatform(platform.key, scoring)
+          ] ?? 0) > 0,
       ) ?? [],
     [data?.adpContext?.platforms, scoring],
   );
