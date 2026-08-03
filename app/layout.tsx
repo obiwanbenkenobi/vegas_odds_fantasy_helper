@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vegas Fantasy Draft Helper",
+  title: "Edgeboard — Market-Implied Fantasy Football",
   description:
-    "Compare fantasy football players using Las Vegas season-long player props.",
+    "Draft, start, and compare fantasy football players using live sportsbook consensus lines.",
 };
 
 export default function RootLayout({

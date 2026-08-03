@@ -1,0 +1,29 @@
+name: Capture sportsbook history
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sportsbook-history-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Capture current player and game lines
+        env:
+          CAPTURE_URL: ${{ secrets.CAPTURE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CAPTURE_URL"
+          test -n "$CRON_SECRET"
+          curl --fail --silent --show-error \
+            --retry 2 \
+            --max-time 90 \
+            --request POST \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$CAPTURE_URL/api/history/capture?mode=all"
