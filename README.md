@@ -3,8 +3,8 @@
 Edgeboard is a fantasy-football decision board built from live sportsbook
 quotes. It has two views:
 
-- **Draft board** — separates head-to-head comparison, the market-wide Vegas
-  value board, and the on-the-clock draft assistant into focused workspaces.
+- **Draft board** — separates head-to-head comparison, live market signals,
+  and the on-the-clock draft assistant into focused workspaces.
   Contextual value alternatives remain attached to the comparison workspace.
 - **Weekly board** — aggregates game-level player props and team lines for
   start/sit decisions.
@@ -66,8 +66,8 @@ ESPN supports PPR; Yahoo supports half-PPR; and CBS supports PPR and standard.
 When Half PPR is selected for a platform without Half PPR ADP, the board uses
 that platform's PPR ADP and labels the fallback while keeping Vegas points in
 Half PPR.
-Changing the platform recalculates every comparison, value match, and draft-room
-recommendation. Player identity and headshots come from Sleeper's public NFL
+Changing the platform recalculates every ADP comparison, direct value match, and
+draft-room recommendation. Player identity and headshots come from Sleeper's public NFL
 player directory. When a player is selected or expanded, the app also loads the
 three most recent completed regular seasons of actual player stats from Sleeper
 and scores them with the selected fantasy format. None of these sources replace

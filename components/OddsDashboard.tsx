@@ -54,9 +54,9 @@ const DRAFT_WORKSPACES: Array<{
   },
   {
     value: "value",
-    eyebrow: "Whole market",
-    label: "Vegas value board",
-    description: "The largest gaps between sportsbook production and draft cost.",
+    eyebrow: "Live books",
+    label: "Market signals",
+    description: "Track line movement and disagreement between sportsbooks.",
   },
   {
     value: "assistant",
@@ -2073,226 +2073,16 @@ function DraftValueTargets({
   );
 }
 
-interface AdpMispricing {
-  player: PlayerProjection;
-  benchmark: PlayerProjection;
-  vegasRank: number;
-  adpRank: number;
-  actualAdp: number;
-  vegasAdp: number;
-  pickGap: number;
-  comparablePlayers: number;
-}
-
-function calculateAdpMispricings(
-  players: PlayerProjection[],
-  scoring: LiveScoringSystem,
-  adpPlatform: AdpPlatform,
-): AdpMispricing[] {
-  const groups = new Map<string, PlayerProjection[]>();
-
-  for (const player of players) {
-    if (
-      adpFor(player, scoring, adpPlatform) === null ||
-      player.components.length === 0 ||
-      player.bookCount < 2
-    ) {
-      continue;
-    }
-    const key = `${player.player.position}:${marketShape(player)}`;
-    const values = groups.get(key) ?? [];
-    values.push(player);
-    groups.set(key, values);
-  }
-
-  return [...groups.values()].flatMap((group) => {
-    if (group.length < 4) return [];
-    const byAdp = [...group].sort(
-      (left, right) =>
-        (adpFor(left, scoring, adpPlatform) as number) -
-        (adpFor(right, scoring, adpPlatform) as number),
-    );
-    const adpRankByPlayer = new Map(
-      byAdp.map((player, index) => [playerKey(player), index + 1]),
-    );
-    const byVegas = [...group].sort(
-      (left, right) => right.points[scoring] - left.points[scoring],
-    );
-
-    return byVegas.flatMap((player, index) => {
-      const actualAdp = adpFor(player, scoring, adpPlatform) as number;
-      const benchmark = byAdp[index];
-      const vegasAdp = adpFor(benchmark, scoring, adpPlatform) as number;
-      const pickGap = actualAdp - vegasAdp;
-      if (Math.abs(pickGap) < 6) return [];
-
-      return [
-        {
-          player,
-          benchmark,
-          vegasRank: index + 1,
-          adpRank: adpRankByPlayer.get(playerKey(player)) ?? index + 1,
-          actualAdp,
-          vegasAdp,
-          pickGap,
-          comparablePlayers: group.length,
-        },
-      ];
-    });
-  });
-}
-
-function MispricingList({
-  title,
-  description,
-  items,
-  value,
-  scoring,
-  onCompare,
-}: {
-  title: string;
-  description: string;
-  items: AdpMispricing[];
-  value: boolean;
-  scoring: LiveScoringSystem;
-  onCompare: (left: PlayerProjection, right: PlayerProjection) => void;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-[#d3cec3] bg-[#fbfaf6]">
-      <div className={`border-b border-[#d3cec3] px-4 py-4 sm:px-5 ${value ? "bg-[#e5eee7]" : "bg-[#eee8df]"}`}>
-        <div className={`text-[10px] font-bold uppercase tracking-[0.1em] ${value ? "text-[#2e674a]" : "text-[#9b4a32]"}`}>
-          {title}
-        </div>
-        <p className="mt-1 text-xs text-[#6d7771]">{description}</p>
-      </div>
-      <div className="divide-y divide-[#dfdbd2]">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <article
-              key={playerKey(item.player)}
-              className="grid gap-4 px-4 py-4 sm:grid-cols-[1fr_auto] sm:items-center sm:px-5"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <PlayerHeadshot player={item.player.player} size="sm" />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-[#19261f]">
-                    {item.player.player.name}
-                  </div>
-                  <div className="mt-0.5 text-[10px] text-[#737d77]">
-                    {item.player.player.position} · {item.player.player.team ?? "Team pending"} · {item.player.bookCount} {item.player.bookCount === 1 ? "book" : "books"}
-                  </div>
-                  <div className="mt-1.5 text-[11px] text-[#58645d]">
-                    Vegas points rank #{item.vegasRank} · draft rank #{item.adpRank}
-                  </div>
-                  <div className="mt-0.5 text-[9px] text-[#89908c]">
-                    Among {item.comparablePlayers} same-position players with matching prop types
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-5 sm:justify-end">
-                <div className="text-right">
-                  <div className={`font-mono text-lg font-semibold ${value ? "text-[#2e674a]" : "text-[#9b4a32]"}`}>
-                    {Math.abs(item.pickGap).toFixed(0)} picks
-                  </div>
-                  <div className="text-[9px] uppercase tracking-[0.07em] text-[#7b847f]">
-                    {value ? "later than rank peer" : "earlier than rank peer"}
-                  </div>
-                  <div className="mt-1 text-[10px] text-[#737d77]">
-                    {item.player.points[scoring].toFixed(1)} pts · ADP {formatAdp(item.actualAdp)} vs rank peer {formatAdp(item.vegasAdp)}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onCompare(item.player, item.benchmark)}
-                  className="rounded-md border border-[#aaa49a] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.07em] text-[#58635d] transition hover:border-[#315c46] hover:text-[#315c46]"
-                  aria-label={`Compare ${item.player.player.name} with ${item.benchmark.player.name}`}
-                >
-                  Compare
-                </button>
-              </div>
-            </article>
-          ))
-        ) : (
-          <div className="px-5 py-8 text-center text-xs text-[#7a837e]">
-            No strong mismatch with the current books and scoring.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function VegasAdpMispricing({
-  players,
-  scoring,
-  adpPlatform,
-  onCompare,
-}: {
-  players: PlayerProjection[];
-  scoring: LiveScoringSystem;
-  adpPlatform: AdpPlatform;
-  onCompare: (left: PlayerProjection, right: PlayerProjection) => void;
-}) {
-  const mispricings = useMemo(
-    () => calculateAdpMispricings(players, scoring, adpPlatform),
-    [adpPlatform, players, scoring],
-  );
-  const values = mispricings
-    .filter((item) => item.pickGap > 0)
-    .sort((left, right) => right.pickGap - left.pickGap)
-    .slice(0, 6);
-  const premiums = mispricings
-    .filter((item) => item.pickGap < 0)
-    .sort((left, right) => left.pickGap - right.pickGap)
-    .slice(0, 6);
-
-  return (
-    <section className="mt-10">
-      <div className="mb-4 max-w-3xl">
-        <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#a9492e]">
-          Vegas vs. fantasy ADP
-        </div>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#16231d]">
-          Where Vegas and draft rooms rank players differently
-        </h2>
-        <p className="mt-1 text-xs leading-5 text-[#707a74]">
-          Within each position and matching prop set, Vegas points determine a rank. We compare it with the ADP of the equally ranked player—not a claim that their projections are identical.
-        </p>
-      </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <MispricingList
-          title="Vegas value targets"
-          description="Vegas ranks these players higher than drafters do."
-          items={values}
-          value
-          scoring={scoring}
-          onCompare={onCompare}
-        />
-        <MispricingList
-          title="ADP premiums"
-          description="Draft rooms rank these players higher than Vegas does."
-          items={premiums}
-          value={false}
-          scoring={scoring}
-          onCompare={onCompare}
-        />
-      </div>
-    </section>
-  );
-}
-
 const DRAFT_POSITIONS: LivePosition[] = ["QB", "RB", "WR", "TE"];
 
 function DraftAssistant({
   players,
   scoring,
   adpPlatform,
-  onCompare,
 }: {
   players: PlayerProjection[];
   scoring: LiveScoringSystem;
   adpPlatform: AdpPlatform;
-  onCompare: (left: PlayerProjection, right: PlayerProjection) => void;
 }) {
   const [currentPick, setCurrentPick] = useState(1);
   const [needs, setNeeds] = useState<LivePosition[]>(["QB", "RB", "WR", "TE"]);
@@ -2330,13 +2120,6 @@ function DraftAssistant({
     }
   }, [currentPick, needs, planLoaded]);
 
-  const mispricings = useMemo(
-    () => calculateAdpMispricings(players, scoring, adpPlatform),
-    [adpPlatform, players, scoring],
-  );
-  const mispricingByPlayer = new Map(
-    mispricings.map((item) => [playerKey(item.player), item]),
-  );
   const recommendations = players
     .flatMap((player) => {
       const adp = adpFor(player, scoring, adpPlatform);
@@ -2349,11 +2132,10 @@ function DraftAssistant({
       ) {
         return [];
       }
-      return [{ player, adp, value: mispricingByPlayer.get(playerKey(player)) }];
+      return [{ player, adp }];
     })
     .sort(
       (left, right) =>
-        (right.value?.pickGap ?? 0) - (left.value?.pickGap ?? 0) ||
         Math.abs(left.adp - currentPick) - Math.abs(right.adp - currentPick),
     )
     .slice(0, 6);
@@ -2376,10 +2158,10 @@ function DraftAssistant({
             Draft room assistant
           </div>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#16231d]">
-            Plan the next pick before the value window closes
+            Plan the next pick around the ADP window
           </h2>
           <p className="mt-1 max-w-2xl text-xs leading-5 text-[#707a74]">
-            Set the current overall pick and the positions your roster needs. Recommendations favor Vegas values expected to go within the next 30 picks.
+            Set the current overall pick and the positions your roster needs. Recommendations show the closest available ADPs expected to go within the next 30 picks.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-4">
@@ -2427,7 +2209,7 @@ function DraftAssistant({
 
       {recommendations.length > 0 ? (
         <div className="grid sm:grid-cols-2 xl:grid-cols-3">
-          {recommendations.map(({ player, adp, value }, index) => {
+          {recommendations.map(({ player, adp }, index) => {
             const urgency =
               adp <= currentPick + 3
                 ? "Available now"
@@ -2470,24 +2252,15 @@ function DraftAssistant({
                   </div>
                   <div>
                     <div className="font-mono text-lg font-semibold text-[#2e674a]">
-                      {value?.pickGap ? `+${value.pickGap.toFixed(0)}` : "—"}
+                      {player.bookCount}
                     </div>
-                    <div className="text-[8px] uppercase tracking-[0.06em] text-[#858d88]">Value picks</div>
+                    <div className="text-[8px] uppercase tracking-[0.06em] text-[#858d88]">Books</div>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[#6a756f]">
                     {urgency}
                   </span>
-                  {value && (
-                    <button
-                      type="button"
-                      onClick={() => onCompare(player, value.benchmark)}
-                      className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#8f4029] hover:text-[#642b1d]"
-                    >
-                      Compare value
-                    </button>
-                  )}
                 </div>
               </article>
             );
@@ -3409,18 +3182,6 @@ export function OddsDashboard() {
           ) : null}
         </section>
 
-        {mode === "draft" &&
-          draftWorkspace === "value" &&
-          data &&
-          data.players.length > 0 && (
-          <VegasAdpMispricing
-            players={data.players}
-            scoring={scoring}
-            adpPlatform={activeAdpPlatform}
-            onCompare={comparePair}
-          />
-        )}
-
         {data &&
           data.players.length > 0 &&
           (mode === "weekly" || draftWorkspace === "value") && (
@@ -3453,7 +3214,6 @@ export function OddsDashboard() {
             players={data.players}
             scoring={scoring}
             adpPlatform={activeAdpPlatform}
-            onCompare={comparePair}
           />
         )}
 
