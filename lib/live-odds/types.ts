@@ -27,6 +27,31 @@ export interface LivePlayer {
   team?: string;
   opponent?: string;
   headshotUrl?: string;
+  sleeperId?: string;
+}
+
+export interface HistoricalSeasonStats {
+  season: number;
+  games: number;
+  passingYards: number;
+  passingTouchdowns: number;
+  interceptions: number;
+  rushingAttempts: number;
+  rushingYards: number;
+  rushingTouchdowns: number;
+  targets: number;
+  receptions: number;
+  receivingYards: number;
+  receivingTouchdowns: number;
+  fumblesLost: number;
+  points: Record<LiveScoringSystem, number>;
+  positionRank: Partial<Record<LiveScoringSystem, number>>;
+}
+
+export interface PlayerHistoryResponse {
+  playerId: string;
+  source: "Sleeper";
+  seasons: HistoricalSeasonStats[];
 }
 
 export interface AdpEntry {

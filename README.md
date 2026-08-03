@@ -53,8 +53,10 @@ The Draft board supplements sportsbook projections with current 12-team ADP
 from [Fantasy Football Calculator](https://fantasyfootballcalculator.com/adp/ppr).
 That free feed updates daily and is fetched for PPR, half-PPR, and standard
 formats. Player identity and headshots come from Sleeper's public NFL player
-directory. Neither source replaces the Vegas projection; they supply draft
-price and player presentation metadata.
+directory. When a player is selected or expanded, the app also loads the three
+most recent completed regular seasons of actual player stats from Sleeper and
+scores them with the selected fantasy format. Neither source replaces the Vegas
+projection; they supply draft price and player context.
 
 Season-long player stat futures are less standardized than weekly props. The
 Draft board merges the direct Bally Bet, BetMGM, BetRivers, DraftKings, FanDuel,

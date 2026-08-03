@@ -25,6 +25,7 @@ interface PlayerProfile {
   team?: string;
   position?: LivePosition;
   headshotUrl?: string;
+  sleeperId?: string;
   adp: Partial<Record<LiveScoringSystem, AdpEntry>>;
   active: boolean;
 }
@@ -118,6 +119,7 @@ async function getSleeperProfiles(): Promise<Map<string, PlayerProfile>> {
       name,
       team: string(player.team) || undefined,
       position,
+      sleeperId: playerId || undefined,
       headshotUrl: playerId
         ? `https://sleepercdn.com/content/nfl/players/${encodeURIComponent(playerId)}.jpg`
         : undefined,
@@ -246,6 +248,7 @@ export function enrichPlayerProjections(
         team: profile.team ?? projection.player.team,
         position: profile.position ?? projection.player.position,
         headshotUrl: profile.headshotUrl,
+        sleeperId: profile.sleeperId,
       },
       adp: profile.adp,
     };

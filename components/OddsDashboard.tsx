@@ -14,9 +14,11 @@ import type {
   ConsensusComponent,
   DashboardResponse,
   GameSummary,
+  HistoricalSeasonStats,
   LiveMarket,
   LivePosition,
   LiveScoringSystem,
+  PlayerHistoryResponse,
   PlayerProjection,
   SportsbookQuote,
 } from "@/lib/live-odds/types";
@@ -466,6 +468,163 @@ function PostedLines({
   );
 }
 
+const playerHistoryCache = new Map<string, PlayerHistoryResponse>();
+const playerHistoryRequests = new Map<
+  string,
+  Promise<PlayerHistoryResponse>
+>();
+
+function loadPlayerHistory(playerId: string): Promise<PlayerHistoryResponse> {
+  const cached = playerHistoryCache.get(playerId);
+  if (cached) return Promise.resolve(cached);
+  const pending = playerHistoryRequests.get(playerId);
+  if (pending) return pending;
+
+  const request = fetch(
+    `/api/player-history?playerId=${encodeURIComponent(playerId)}`,
+  )
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`Player history returned ${response.status}`);
+      }
+      const payload = (await response.json()) as PlayerHistoryResponse;
+      playerHistoryCache.set(playerId, payload);
+      return payload;
+    })
+    .finally(() => playerHistoryRequests.delete(playerId));
+  playerHistoryRequests.set(playerId, request);
+  return request;
+}
+
+function historicalStatSummary(
+  stats: HistoricalSeasonStats,
+  position: LivePosition,
+): string {
+  if (position === "QB") {
+    return [
+      `${formatNumber(stats.passingYards, 0)} pass yds`,
+      `${formatNumber(stats.passingTouchdowns, 0)} pass TD`,
+      `${formatNumber(stats.interceptions, 0)} INT`,
+      `${formatNumber(stats.rushingYards, 0)} rush yds`,
+      `${formatNumber(stats.rushingTouchdowns, 0)} rush TD`,
+    ].join(" · ");
+  }
+
+  const receiving = [
+    `${formatNumber(stats.targets, 0)} tgts`,
+    `${formatNumber(stats.receptions, 0)} rec`,
+    `${formatNumber(stats.receivingYards, 0)} rec yds`,
+    `${formatNumber(stats.receivingTouchdowns, 0)} rec TD`,
+  ];
+  const rushing = [
+    `${formatNumber(stats.rushingAttempts, 0)} carries`,
+    `${formatNumber(stats.rushingYards, 0)} rush yds`,
+    `${formatNumber(stats.rushingTouchdowns, 0)} rush TD`,
+  ];
+  return (position === "RB" ? [...rushing, ...receiving] : [...receiving, ...rushing])
+    .join(" · ");
+}
+
+function PlayerHistory({
+  player,
+  scoring,
+}: {
+  player: PlayerProjection["player"];
+  scoring: LiveScoringSystem;
+}) {
+  const playerId = player.sleeperId;
+  const initialHistory = playerId ? playerHistoryCache.get(playerId) ?? null : null;
+  const [history, setHistory] = useState<PlayerHistoryResponse | null>(
+    initialHistory,
+  );
+  const [loading, setLoading] = useState(Boolean(playerId && !initialHistory));
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!playerId || history) return;
+    let active = true;
+    void loadPlayerHistory(playerId)
+      .then((payload) => {
+        if (active) setHistory(payload);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [history, playerId]);
+
+  return (
+    <div className="mt-5 border-t border-[#ded9cf] pt-4">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#56665d]">
+            Regular-season history
+          </div>
+          <div className="mt-0.5 text-[10px] text-[#7a837e]">
+            Actual totals · {scoringLabel(scoring)} scoring
+          </div>
+        </div>
+        <div className="text-[9px] text-[#8a918d]">Sleeper</div>
+      </div>
+
+      {loading ? (
+        <div className="mt-3 space-y-2" aria-label="Loading historical stats">
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className="h-12 animate-pulse rounded-md bg-[#e7e3da]"
+            />
+          ))}
+        </div>
+      ) : failed ? (
+        <div className="mt-3 rounded-md bg-[#eee9df] px-3 py-3 text-xs text-[#747d78]">
+          Historical stats are temporarily unavailable.
+        </div>
+      ) : !playerId || !history || history.seasons.length === 0 ? (
+        <div className="mt-3 rounded-md bg-[#eee9df] px-3 py-3 text-xs text-[#747d78]">
+          No recent regular-season stats are available for this player.
+        </div>
+      ) : (
+        <div className="mt-3 overflow-hidden rounded-md border border-[#ddd8ce] bg-[#fbfaf6]">
+          {history.seasons.map((season) => {
+            return (
+              <div
+                key={season.season}
+                className="grid grid-cols-[3.25rem_1fr_auto] items-center gap-3 border-b border-[#e3dfd7] px-3 py-3 last:border-0"
+              >
+                <div>
+                  <div className="font-mono text-xs font-semibold text-[#27352e]">
+                    {season.season}
+                  </div>
+                  <div className="mt-0.5 text-[9px] text-[#858d88]">
+                    {formatNumber(season.games, 0)} GP
+                  </div>
+                </div>
+                <div className="text-[10px] leading-4 text-[#59655e]">
+                  {historicalStatSummary(season, player.position)}
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-sm font-semibold text-[#a9492e]">
+                    {season.points[scoring].toFixed(1)}
+                  </div>
+                  <div className="mt-0.5 text-[9px] text-[#858d88]">
+                    {scoringLabel(scoring)} pts
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SourceStatus({
   data,
   activeBooks,
@@ -728,7 +887,13 @@ function QuoteRow({ quote }: { quote: SportsbookQuote }) {
   );
 }
 
-function PlayerDetail({ player }: { player: PlayerProjection }) {
+function PlayerDetail({
+  player,
+  scoring,
+}: {
+  player: PlayerProjection;
+  scoring: LiveScoringSystem;
+}) {
   return (
     <div className="border-y border-[#cfc9bc] bg-[#f0ede5] px-5 py-6 sm:px-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -788,6 +953,11 @@ function PlayerDetail({ player }: { player: PlayerProjection }) {
           </div>
         ))}
       </div>
+      <PlayerHistory
+        key={player.player.sleeperId ?? player.player.id}
+        player={player.player}
+        scoring={scoring}
+      />
     </div>
   );
 }
@@ -1007,6 +1177,11 @@ function ComparisonSummary({
           </div>
         )}
       </div>
+      <PlayerHistory
+        key={player.player.sleeperId ?? player.player.id}
+        player={player.player}
+        scoring={scoring}
+      />
     </div>
   );
 }
@@ -2452,7 +2627,7 @@ function PlayerBoard({
                   {expanded && (
                     <tr>
                       <td colSpan={6} className="p-0">
-                        <PlayerDetail player={player} />
+                        <PlayerDetail player={player} scoring={scoring} />
                       </td>
                     </tr>
                   )}
@@ -3143,7 +3318,7 @@ export function OddsDashboard() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Icon name="clock" className="h-3.5 w-3.5" /> Player photos via{" "}
+            <Icon name="clock" className="h-3.5 w-3.5" /> Player photos and historical stats via{" "}
             <a
               href="https://docs.sleeper.com/"
               target="_blank"
