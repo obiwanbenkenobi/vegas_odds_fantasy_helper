@@ -39,6 +39,13 @@ DraftKings jurisdiction defaults to New York and can be changed with
 `DRAFTKINGS_SITE=dkusny`. These are unofficial, read-only web integrations, so
 operator changes can require maintenance.
 
+DraftKings is bootstrapped through its public NFL sportsbook page before the
+current player-total endpoints are requested. If that live refresh fails and
+historical storage is configured, the Draft board keeps DraftKings' most recent
+active captured lines in the consensus and marks both the book and quotes as
+last known. Stale fallback lines are excluded from history ingestion, so they do
+not create false updates or movement events.
+
 `PROPLINE_API_KEY` supplies the freshest weekly markets it has available.
 `ODDS_IO_API_KEY` discovers and requests every sportsbook enabled on that
 account for weekly game and player markets. Its current free plan permits two

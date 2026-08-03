@@ -63,6 +63,7 @@ export function captureLineHistory(
   for (const player of data.players) {
     for (const component of player.components) {
       for (const quote of component.quotes) {
+        if (quote.stale) continue;
         const key = lineKey(player.player.id, component.market, quote.book.key);
         seen.add(key);
         const existing = lines[key];

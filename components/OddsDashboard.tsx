@@ -773,9 +773,11 @@ function PlayerHistory({
 function SourceStatus({
   data,
   activeBooks,
+  staleBooks,
 }: {
   data: DashboardResponse | null;
   activeBooks: number;
+  staleBooks: number;
 }) {
   const live = data?.status === "live" || data?.status === "partial";
   return (
@@ -784,7 +786,9 @@ function SourceStatus({
         className={`h-2 w-2 rounded-full ${live ? "bg-[#2d7a53]" : "bg-[#a4a8a5]"}`}
       />
       {live
-        ? `${activeBooks} of ${data?.books.length ?? 0} books active`
+        ? `${activeBooks} of ${data?.books.length ?? 0} books selected${
+            staleBooks > 0 ? ` · ${staleBooks} last known` : ""
+          }`
         : "Waiting for live data"}
     </div>
   );
@@ -844,6 +848,11 @@ function BookFilter({
                   {active && <Icon name="check" className="h-2.5 w-2.5" />}
                 </span>
                 {book.name}
+                {book.stale && (
+                  <span className="text-[9px] font-bold uppercase tracking-[0.06em] text-[#a15a34]">
+                    Last known
+                  </span>
+                )}
               </button>
             );
           })}
@@ -1015,7 +1024,7 @@ function QuoteRow({ quote }: { quote: SportsbookQuote }) {
           {quote.book.name}
         </div>
         <div className="mt-0.5 text-[10px] text-[#818984]">
-          Updated {timeAgo(quote.updatedAt)}
+          {quote.stale ? "Last known" : "Updated"} {timeAgo(quote.updatedAt)}
         </div>
       </div>
       <div className="text-right">
@@ -2924,6 +2933,8 @@ export function OddsDashboard() {
     Partial<Record<BoardMode, boolean>>
   >({});
   const rawData = dataByMode[mode] ?? null;
+  const staleSources =
+    rawData?.sources.filter((source) => source.state === "stale") ?? [];
   const allBookKeys = useMemo(
     () => rawData?.books.map((book) => book.key) ?? [],
     [rawData],
@@ -3199,6 +3210,7 @@ export function OddsDashboard() {
             <SourceStatus
               data={rawData}
               activeBooks={enabledBookKeys.length}
+              staleBooks={data?.books.filter((book) => book.stale).length ?? 0}
             />
             <button
               type="button"
@@ -3286,6 +3298,13 @@ export function OddsDashboard() {
           {error && (
             <div className="mb-5 border-l-4 border-[#a3412b] bg-[#f2ded7] px-4 py-3 text-sm text-[#7f3020]">
               {error}
+            </div>
+          )}
+          {staleSources.length > 0 && (
+            <div className="mb-5 border-l-4 border-[#b46b32] bg-[#f3e8d8] px-4 py-3 text-sm text-[#74451f]">
+              {staleSources.map((source) => source.label).join(" · ")} could
+              not refresh. Last-known lines remain in the board and are marked
+              as stale.
             </div>
           )}
 

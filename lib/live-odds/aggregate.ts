@@ -285,7 +285,14 @@ export function collectBooks(
   games: GameBookLine[],
 ): LiveBook[] {
   const books = new Map<string, LiveBook>();
-  for (const item of [...quotes, ...games]) books.set(item.book.key, item.book);
+  for (const item of [...quotes, ...games]) {
+    const existing = books.get(item.book.key);
+    const stale = "stale" in item && item.stale === true;
+    books.set(item.book.key, {
+      ...item.book,
+      stale: existing ? existing.stale === true && stale : stale,
+    });
+  }
   return [...books.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 

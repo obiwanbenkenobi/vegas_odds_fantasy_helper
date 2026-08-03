@@ -25,6 +25,7 @@ export type AdpPlatform =
 export interface LiveBook {
   key: string;
   name: string;
+  stale?: boolean;
 }
 
 export interface LivePlayer {
@@ -103,6 +104,7 @@ export interface SportsbookQuote {
   underOdds: number | null;
   updatedAt: string;
   source: string;
+  stale?: boolean;
 }
 
 export interface GameBookLine {
@@ -132,7 +134,7 @@ export interface SourceStatus {
   key: string;
   label: string;
   configured: boolean;
-  state: "connected" | "empty" | "error" | "not_configured";
+  state: "connected" | "stale" | "empty" | "error" | "not_configured";
   detail: string;
 }
 

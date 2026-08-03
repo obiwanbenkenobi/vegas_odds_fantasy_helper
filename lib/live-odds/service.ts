@@ -16,6 +16,10 @@ import {
   enrichPlayerProjections,
   getPlayerMetadata,
 } from "./player-metadata";
+import {
+  historyStorageConfigured,
+  readStoredBookSnapshot,
+} from "./storage";
 import type {
   BoardMode,
   DashboardResponse,
@@ -176,7 +180,8 @@ export async function getLiveDashboard(mode: BoardMode): Promise<DashboardRespon
     getPlayerMetadata(mode, season).catch(() => null),
   ]);
   const results: ProviderResult[] = [];
-  settled.forEach((item, index) => {
+  for (let index = 0; index < settled.length; index += 1) {
+    const item = settled[index];
     const job = jobs[index];
     if (item.status === "fulfilled") {
       results.push(item.value);
@@ -196,6 +201,30 @@ export async function getLiveDashboard(mode: BoardMode): Promise<DashboardRespon
             : "Connected, but the books have not posted matching markets yet.",
       });
     } else {
+      if (
+        mode === "draft" &&
+        job.key === "draftkings-direct" &&
+        historyStorageConfigured()
+      ) {
+        const snapshot = await readStoredBookSnapshot(
+          mode,
+          season,
+          "draftkings",
+        ).catch(() => null);
+        if (snapshot) {
+          results.push(snapshot.result);
+          sources.push({
+            key: job.key,
+            label: job.label,
+            configured: true,
+            state: "stale",
+            detail:
+              `${snapshot.result.quotes.length} last-known player quotes · ` +
+              `captured ${snapshot.capturedAt} · live refresh failed: ${safeMessage(item.reason)}`,
+          });
+          continue;
+        }
+      }
       sources.push({
         key: job.key,
         label: job.label,
@@ -204,7 +233,7 @@ export async function getLiveDashboard(mode: BoardMode): Promise<DashboardRespon
         detail: safeMessage(item.reason),
       });
     }
-  });
+  }
 
   const quotes = results.flatMap((result) => result.quotes);
   const rawGames = results.flatMap((result) => result.games);
@@ -215,13 +244,14 @@ export async function getLiveDashboard(mode: BoardMode): Promise<DashboardRespon
   const games = aggregateGames(rawGames);
   const books = collectBooks(quotes, rawGames);
   const connected = sources.filter((source) => source.state === "connected").length;
+  const stale = sources.filter((source) => source.state === "stale").length;
   const errors = sources.filter((source) => source.state === "error").length;
 
   return {
     mode,
     status:
       players.length > 0
-        ? errors > 0
+        ? errors > 0 || stale > 0
           ? "partial"
           : "live"
         : connected > 0 || games.length > 0

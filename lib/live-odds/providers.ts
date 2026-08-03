@@ -27,19 +27,21 @@ const DEFAULT_ODDS_IO_BOOKS = [
   "Fanatics",
   "FanDuel",
 ];
-const DRAFTKINGS_BASE =
-  "https://sportsbook-nash.draftkings.com/api/sportscontent";
+const DRAFTKINGS_BASE = "https://sportsbook-nash.draftkings.com";
+const DRAFTKINGS_PAGE = "https://sportsbook.draftkings.com/leagues/football/nfl";
 const DRAFTKINGS_NFL_LEAGUE = "88808";
-const DRAFTKINGS_PLAYER_FUTURES = "Player Futures";
 const DRAFTKINGS_SEASON_MARKETS: ReadonlyMap<string, LiveMarket> = new Map([
-  ["Passing Yards", "passing_yards"],
-  ["Passing TDs", "passing_tds"],
-  ["Rushing Yards", "rushing_yards"],
-  ["Rushing TDs", "rushing_tds"],
-  ["Receiving Yards", "receiving_yards"],
-  ["Receiving TDs", "receiving_tds"],
-  ["Receptions", "receptions"],
+  ["pass-yards", "passing_yards"],
+  ["pass-tds", "passing_tds"],
+  ["rush-yards", "rushing_yards"],
+  ["rush-tds", "rushing_tds"],
+  ["rec-yards", "receiving_yards"],
+  ["rec-tds", "receiving_tds"],
+  ["receptions", "receptions"],
 ] as const);
+const DRAFTKINGS_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
 const BETRIVERS_NFL_FUTURES =
   "https://eu.offering-api.kambicdn.com/offering/v2018/rsiusny/listView/american_football/nfl/all/all/competitions.json?lang=en_US&market=US-NY";
 const FANDUEL_NFL_PAGE = "https://sportsbook.fanduel.com/navigation/nfl";
@@ -174,6 +176,93 @@ function draftKingsSite(): string {
     : "dkusny";
 }
 
+function draftKingsSiteExperience(): string {
+  return `US-${draftKingsSite().slice(-2).toUpperCase()}-SB`;
+}
+
+interface DraftKingsTarget {
+  id: string;
+  name: string;
+  market: LiveMarket;
+}
+
+function draftKingsTargets(html: string): DraftKingsTarget[] {
+  const initialState = html.match(
+    /<script[^>]*>\s*window\.__INITIAL_STATE__\s*=\s*([\s\S]*?);\s*<\/script>/,
+  );
+  if (!initialState) {
+    throw new Error("DraftKings did not publish its sportsbook configuration.");
+  }
+
+  const state = record(JSON.parse(initialState[1]));
+  const cms = record(state?.cmsConfigurations);
+  const navigation = record(cms?.navigation);
+  const targets = new Map<LiveMarket, DraftKingsTarget>();
+
+  function visit(value: unknown): void {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    const item = record(value);
+    if (!item) return;
+
+    if (string(item.seoId) === "player-stats-o-u") {
+      const children = Array.isArray(item.children) ? item.children : [];
+      for (const childValue of children) {
+        const child = record(childValue);
+        const parameters = record(child?.parameters);
+        const market = DRAFTKINGS_SEASON_MARKETS.get(string(child?.seoId));
+        const id = string(parameters?.subcategoryId);
+        if (market && id && !targets.has(market)) {
+          targets.set(market, {
+            id,
+            name: string(child?.title) || string(child?.seoId),
+            market,
+          });
+        }
+      }
+      return;
+    }
+
+    Object.values(item).forEach(visit);
+  }
+
+  visit(navigation?.navigation ?? navigation);
+  return [...targets.values()];
+}
+
+function draftKingsCookies(response: Response): string {
+  const headers = response.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const combined = response.headers.get("set-cookie");
+  const values = headers.getSetCookie?.() ?? (combined ? [combined] : []);
+  return values
+    .map((value) => value.split(";", 1)[0])
+    .filter(Boolean)
+    .join("; ");
+}
+
+async function draftKingsBootstrap(): Promise<{
+  cookies: string;
+  targets: DraftKingsTarget[];
+}> {
+  const response = await fetch(DRAFTKINGS_PAGE, {
+    headers: { Accept: "text/html", "User-Agent": DRAFTKINGS_USER_AGENT },
+    cache: "no-store",
+  });
+  const cookies = draftKingsCookies(response);
+  const targets = draftKingsTargets(await responseText(response, "DraftKings"));
+  if (!cookies) {
+    throw new Error("DraftKings did not establish an anonymous sportsbook session.");
+  }
+  if (targets.length === 0) {
+    throw new Error("DraftKings did not return matching NFL season-player markets.");
+  }
+  return { cookies, targets };
+}
+
 async function oddsIoBooks(apiKey: string): Promise<string> {
   const configured = (process.env.ODDS_IO_BOOKMAKERS ?? "")
     .split(",")
@@ -196,59 +285,52 @@ async function oddsIoBooks(apiKey: string): Promise<string> {
   return (selected.length > 0 ? selected : DEFAULT_ODDS_IO_BOOKS).join(",");
 }
 
-function draftKingsUrl(path: string): string {
-  return `${DRAFTKINGS_BASE}/${draftKingsSite()}/v1/leagues/${DRAFTKINGS_NFL_LEAGUE}${path}`;
+function draftKingsMarketUrl(subcategoryId: string): string {
+  const params = new URLSearchParams({
+    isBatchable: "false",
+    templateVars: `${DRAFTKINGS_NFL_LEAGUE},${subcategoryId}`,
+    eventsQuery:
+      `$filter=leagueId eq '${DRAFTKINGS_NFL_LEAGUE}' ` +
+      `AND clientMetadata/Subcategories/any(s: s/Id eq '${subcategoryId}')`,
+    marketsQuery:
+      `$filter=clientMetadata/subCategoryId eq '${subcategoryId}' ` +
+      "AND tags/all(t: t ne 'SportcastBetBuilder')",
+    include: "Events",
+    entity: "events",
+  });
+  return (
+    `${DRAFTKINGS_BASE}/sites/${draftKingsSiteExperience()}` +
+    "/api/sportscontent/controldata/league/leagueSubcategory/v1/markets" +
+    `?${params}`
+  );
 }
 
-async function draftKingsJson(path: string): Promise<unknown> {
-  const response = await fetch(draftKingsUrl(path), {
+async function draftKingsMarketJson(
+  subcategoryId: string,
+  cookies: string,
+): Promise<unknown> {
+  const response = await fetch(draftKingsMarketUrl(subcategoryId), {
     headers: {
       Accept: "application/json",
+      Cookie: cookies,
       Origin: "https://sportsbook.draftkings.com",
       Referer: "https://sportsbook.draftkings.com/",
-      "User-Agent": "Mozilla/5.0",
+      "User-Agent": DRAFTKINGS_USER_AGENT,
     },
-    next: { revalidate: 1800 },
+    cache: "no-store",
   });
   return responseJson(response, "DraftKings");
 }
 
 export async function getDraftKingsSeason(): Promise<ProviderResult> {
   const season = currentNflSeason();
-  const discovery = await draftKingsJson("");
-  const discoveryRecord =
-    discovery && typeof discovery === "object"
-      ? (discovery as Record<string, unknown>)
-      : {};
-  const categories = eventArray(discoveryRecord.categories);
-  const subcategories = eventArray(discoveryRecord.subcategories);
-  const playerFutures = categories.find(
-    (category) => String(category.name ?? "") === DRAFTKINGS_PLAYER_FUTURES,
-  );
-  const categoryId = String(playerFutures?.id ?? "");
-  if (!categoryId) {
-    throw new Error("DraftKings did not return its NFL Player Futures category.");
-  }
-
-  const targets = subcategories.flatMap((subcategory) => {
-    if (String(subcategory.categoryId ?? "") !== categoryId) return [];
-    const market = DRAFTKINGS_SEASON_MARKETS.get(
-      String(subcategory.name ?? ""),
-    );
-    const id = String(subcategory.id ?? "");
-    return market && id ? [{ id, name: String(subcategory.name), market }] : [];
-  });
-  if (targets.length === 0) {
-    throw new Error("DraftKings did not return matching NFL season-player markets.");
-  }
+  const { cookies, targets } = await draftKingsBootstrap();
 
   const fetchedAt = new Date().toISOString();
   const settled = await Promise.allSettled(
     targets.map(async (target) => ({
       target,
-      payload: await draftKingsJson(
-        `/categories/${categoryId}/subcategories/${target.id}`,
-      ),
+      payload: await draftKingsMarketJson(target.id, cookies),
     })),
   );
   const result: ProviderResult = {
@@ -275,6 +357,13 @@ export async function getDraftKingsSeason(): Promise<ProviderResult> {
     );
     result.quotes.push(...normalized.quotes);
     result.warnings.push(...normalized.warnings);
+  }
+
+  if (result.quotes.length === 0) {
+    throw new Error(
+      result.warnings[0] ??
+        "DraftKings returned no matching NFL season-player totals.",
+    );
   }
 
   return result;

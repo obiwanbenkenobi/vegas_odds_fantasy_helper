@@ -3,6 +3,8 @@ import type {
   DashboardResponse,
   GameBookLine,
   LiveMarket,
+  LivePosition,
+  ProviderResult,
   SportsbookQuote,
 } from "./types";
 
@@ -78,6 +80,96 @@ function storageConfig(): { url: string; key: string } | null {
 
 export function historyStorageConfigured(): boolean {
   return storageConfig() !== null;
+}
+
+const STORED_PLAYER_MARKETS = new Set<LiveMarket>([
+  "passing_yards",
+  "passing_tds",
+  "interceptions",
+  "rushing_yards",
+  "rushing_tds",
+  "receiving_yards",
+  "receptions",
+  "receiving_tds",
+  "rushing_receiving_yards",
+]);
+const STORED_PLAYER_POSITIONS = new Set<LivePosition>([
+  "QB",
+  "RB",
+  "WR",
+  "TE",
+  "FLEX",
+]);
+
+export interface StoredBookSnapshot {
+  result: ProviderResult;
+  capturedAt: string;
+}
+
+function metadataString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value ? value : undefined;
+}
+
+export async function readStoredBookSnapshot(
+  mode: BoardMode,
+  season: number,
+  bookKey: string,
+): Promise<StoredBookSnapshot | null> {
+  const rows = await supabaseRequest<StoredLine[]>(
+    `odds_line_current?mode=eq.${mode}&season=eq.${season}&entity_type=eq.player&book_key=eq.${encodeURIComponent(bookKey)}&active=eq.true&select=*&order=last_seen_at.desc&limit=5000`,
+  );
+  const quotes = rows.flatMap((row): SportsbookQuote[] => {
+    const market = row.market as LiveMarket;
+    const position = row.position as LivePosition;
+    const line = Number(row.line);
+    if (
+      !STORED_PLAYER_MARKETS.has(market) ||
+      !STORED_PLAYER_POSITIONS.has(position) ||
+      !Number.isFinite(line)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        scope: row.scope === "season" ? "season" : "game",
+        season: row.season,
+        week: metadataString(row.metadata, "week"),
+        eventId: row.event_id ?? undefined,
+        kickoff: metadataString(row.metadata, "kickoff"),
+        player: {
+          id: row.entity_id,
+          name: row.entity_name,
+          position,
+          team: row.team ?? undefined,
+          opponent: row.opponent ?? undefined,
+        },
+        market,
+        book: { key: row.book_key, name: row.book_name },
+        line,
+        overOdds: row.over_odds === null ? null : Number(row.over_odds),
+        underOdds: row.under_odds === null ? null : Number(row.under_odds),
+        updatedAt: row.source_updated_at ?? row.last_seen_at,
+        source: row.source,
+        stale: true,
+      },
+    ];
+  });
+  if (quotes.length === 0) return null;
+
+  return {
+    result: {
+      source: `${bookKey}-stored-fallback`,
+      quotes,
+      games: [],
+      warnings: [],
+    },
+    capturedAt: rows[0].last_seen_at,
+  };
 }
 
 async function supabaseRequest<T>(
@@ -219,8 +311,18 @@ function gameMarketLines(
 function flattenDashboard(data: DashboardResponse, capturedAt: string): StoredLine[] {
   const players = data.players.flatMap((player) =>
     player.components.flatMap((component) =>
-      component.quotes.map((quote) =>
-        playerLine(data.mode, quote, component.market, player.player.id, capturedAt),
+      component.quotes.flatMap((quote) =>
+        quote.stale
+          ? []
+          : [
+              playerLine(
+                data.mode,
+                quote,
+                component.market,
+                player.player.id,
+                capturedAt,
+              ),
+            ],
       ),
     ),
   );
