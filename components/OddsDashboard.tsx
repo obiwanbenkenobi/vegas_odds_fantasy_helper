@@ -542,6 +542,7 @@ function AdpPlatformSelector({
         ] ?? 0) > 0,
     ) ?? [];
   const selectedUsesPprFallback = usesPprAdpFallback(value, scoring);
+  const selectedPlatform = available.find((platform) => platform.key === value);
   if (available.length === 0) return null;
 
   return (
@@ -551,7 +552,10 @@ function AdpPlatformSelector({
           Draft platform
         </div>
         <div className="mt-0.5 text-xs text-[#69736d]">
-          Every ADP rank and recommendation below uses the selected draft room.
+          {value === "consensus" &&
+          selectedPlatform?.source === "Fantasy Football Calculator"
+            ? "FFC consensus is a separate 12-team draft pool, not an average of the platform values."
+            : "Every ADP rank and recommendation below uses the selected draft room."}
         </div>
         {selectedUsesPprFallback && (
           <div className="mt-1 text-[10px] font-semibold text-[#8f4029]">
@@ -2178,10 +2182,10 @@ function MispricingList({
                     {item.player.player.position} · {item.player.player.team ?? "Team pending"} · {item.player.bookCount} {item.player.bookCount === 1 ? "book" : "books"}
                   </div>
                   <div className="mt-1.5 text-[11px] text-[#58645d]">
-                    Vegas production rank #{item.vegasRank} · fantasy ADP rank #{item.adpRank}
+                    Vegas points rank #{item.vegasRank} · draft rank #{item.adpRank}
                   </div>
                   <div className="mt-0.5 text-[9px] text-[#89908c]">
-                    Among {item.comparablePlayers} same-position players with the same posted props
+                    Among {item.comparablePlayers} same-position players with matching prop types
                   </div>
                 </div>
               </div>
@@ -2191,10 +2195,10 @@ function MispricingList({
                     {Math.abs(item.pickGap).toFixed(0)} picks
                   </div>
                   <div className="text-[9px] uppercase tracking-[0.07em] text-[#7b847f]">
-                    {value ? "later than Vegas slot" : "earlier than Vegas slot"}
+                    {value ? "later than rank peer" : "earlier than rank peer"}
                   </div>
                   <div className="mt-1 text-[10px] text-[#737d77]">
-                    {item.player.points[scoring].toFixed(1)} pts · ADP {formatAdp(item.actualAdp)} vs Vegas slot {formatAdp(item.vegasAdp)}
+                    {item.player.points[scoring].toFixed(1)} pts · ADP {formatAdp(item.actualAdp)} vs rank peer {formatAdp(item.vegasAdp)}
                   </div>
                 </div>
                 <button
@@ -2249,16 +2253,16 @@ function VegasAdpMispricing({
           Vegas vs. fantasy ADP
         </div>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#16231d]">
-          Where the sportsbooks and draft rooms disagree
+          Where Vegas and draft rooms rank players differently
         </h2>
         <p className="mt-1 text-xs leading-5 text-[#707a74]">
-          Players are ranked only against the same position with the exact same posted market set. The Vegas slot maps that production rank onto the current {adpPlatformLabel(adpPlatform, scoring)} ADP curve.
+          Within each position and matching prop set, Vegas points determine a rank. We compare it with the ADP of the equally ranked player—not a claim that their projections are identical.
         </p>
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         <MispricingList
           title="Vegas value targets"
-          description="Drafted later than their sportsbook production slot."
+          description="Vegas ranks these players higher than drafters do."
           items={values}
           value
           scoring={scoring}
@@ -2266,7 +2270,7 @@ function VegasAdpMispricing({
         />
         <MispricingList
           title="ADP premiums"
-          description="Drafted earlier than their sportsbook production slot."
+          description="Draft rooms rank these players higher than Vegas does."
           items={premiums}
           value={false}
           scoring={scoring}
@@ -2567,13 +2571,11 @@ function MovementEvent({ event }: { event: LineHistoryEvent }) {
   );
 }
 
-function MarketIntelligence({
-  players,
+function LineMovementSection({
   history,
   enabledBookKeys,
   persistentHistory,
 }: {
-  players: PlayerProjection[];
   history: LineHistoryState | null;
   enabledBookKeys: readonly string[];
   persistentHistory: boolean;
@@ -2593,7 +2595,6 @@ function MarketIntelligence({
     .sort((left, right) =>
       (right.lastMovedAt ?? "").localeCompare(left.lastMovedAt ?? ""),
     );
-  const disagreements = calculateBookDisagreements(players).slice(0, 7);
 
   return (
     <section className="mt-10">
@@ -2602,83 +2603,101 @@ function MarketIntelligence({
           Market movement & alerts
         </div>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#16231d]">
-          What changed—and where books disagree
+          What changed
         </h2>
         <p className="mt-1 max-w-3xl text-xs leading-5 text-[#707a74]">
           {persistentHistory
-            ? "Always-on capture records book-level changes even when the site is closed. Disagreement alerts use the active sportsbooks."
-            : "Movement tracking starts when this browser first sees a line. Disagreement alerts are available immediately from the active sportsbooks."}
+            ? "Always-on capture records book-level changes even when the site is closed."
+            : "Movement tracking starts when this browser first sees a line."}
         </p>
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="overflow-hidden rounded-xl border border-[#d3cec3] bg-[#fbfaf6]">
-          <div className="flex items-center justify-between border-b border-[#d3cec3] bg-[#eee8df] px-4 py-4 sm:px-5">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#5b6961]">
-                Line movement
-              </div>
-              <div className="mt-1 text-xs text-[#747d78]">
-                {movedLines.length} active lines differ from their opening capture
-              </div>
-            </div>
-            {history && (
-              <div className="text-right text-[9px] text-[#858d88]">
-                Tracking since
-                <br />
-                {new Date(history.startedAt).toLocaleDateString()}
-              </div>
-            )}
-          </div>
-          {events.length > 0 ? (
-            events.map((event) => <MovementEvent key={event.id} event={event} />)
-          ) : (
-            <div className="px-5 py-9 text-center text-xs leading-5 text-[#7a837e]">
-              Baseline captured. New posts, removals, and line changes will appear here automatically.
-            </div>
-          )}
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-[#d3cec3] bg-[#fbfaf6]">
-          <div className="border-b border-[#d3cec3] bg-[#e5eee7] px-4 py-4 sm:px-5">
-            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#2e674a]">
-              Book disagreement
+      <div className="overflow-hidden rounded-xl border border-[#d3cec3] bg-[#fbfaf6]">
+        <div className="flex items-center justify-between border-b border-[#d3cec3] bg-[#eee8df] px-4 py-4 sm:px-5">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#5b6961]">
+              Line movement
             </div>
             <div className="mt-1 text-xs text-[#747d78]">
-              Largest line ranges across active sportsbooks
+              {movedLines.length} active lines differ from their opening capture
             </div>
           </div>
-          {disagreements.length > 0 ? (
-            <div className="divide-y divide-[#e0dcd3]">
-              {disagreements.map((item) => (
-                <div
-                  key={`${playerKey(item.player)}:${item.component.market}`}
-                  className="grid grid-cols-[1fr_auto] gap-4 px-4 py-3 sm:px-5"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-semibold text-[#26332d]">
-                      {item.player.player.name} · {item.component.label}
-                    </div>
-                    <div className="mt-1 text-[10px] text-[#717b75]">
-                      {formatNumber(item.component.low)} at {item.lowBooks} · {formatNumber(item.component.high)} at {item.highBooks}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-sm font-semibold text-[#9b4a32]">
-                      {formatNumber(item.spread)}
-                    </div>
-                    <div className="text-[9px] uppercase tracking-[0.07em] text-[#858d88]">
-                      line gap
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="px-5 py-9 text-center text-xs text-[#7a837e]">
-              No multi-book line disagreements are available.
+          {history && (
+            <div className="text-right text-[9px] text-[#858d88]">
+              Tracking since
+              <br />
+              {new Date(history.startedAt).toLocaleDateString()}
             </div>
           )}
         </div>
+        {events.length > 0 ? (
+          events.map((event) => <MovementEvent key={event.id} event={event} />)
+        ) : (
+          <div className="px-5 py-9 text-center text-xs leading-5 text-[#7a837e]">
+            Baseline captured. New posts, removals, and line changes will appear here automatically.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BookDisagreementSection({
+  players,
+}: {
+  players: PlayerProjection[];
+}) {
+  const disagreements = calculateBookDisagreements(players).slice(0, 7);
+
+  return (
+    <section className="mt-10">
+      <div className="mb-4">
+        <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#2e674a]">
+          Book disagreement
+        </div>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#16231d]">
+          Where sportsbooks disagree
+        </h2>
+        <p className="mt-1 max-w-3xl text-xs leading-5 text-[#707a74]">
+          Largest line ranges across the active sportsbooks.
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[#d3cec3] bg-[#fbfaf6]">
+        <div className="border-b border-[#d3cec3] bg-[#e5eee7] px-4 py-4 sm:px-5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#2e674a]">
+            Largest line gaps
+          </div>
+        </div>
+        {disagreements.length > 0 ? (
+          <div className="divide-y divide-[#e0dcd3]">
+            {disagreements.map((item) => (
+              <div
+                key={`${playerKey(item.player)}:${item.component.market}`}
+                className="grid grid-cols-[1fr_auto] gap-4 px-4 py-3 sm:px-5"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-semibold text-[#26332d]">
+                    {item.player.player.name} · {item.component.label}
+                  </div>
+                  <div className="mt-1 text-[10px] text-[#717b75]">
+                    {formatNumber(item.component.low)} at {item.lowBooks} · {formatNumber(item.component.high)} at {item.highBooks}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-sm font-semibold text-[#9b4a32]">
+                    {formatNumber(item.spread)}
+                  </div>
+                  <div className="text-[9px] uppercase tracking-[0.07em] text-[#858d88]">
+                    line gap
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-5 py-9 text-center text-xs text-[#7a837e]">
+            No multi-book line disagreements are available.
+          </div>
+        )}
       </div>
     </section>
   );
@@ -3393,8 +3412,7 @@ export function OddsDashboard() {
         {data &&
           data.players.length > 0 &&
           (mode === "weekly" || draftWorkspace === "value") && (
-          <MarketIntelligence
-            players={data.players}
+          <LineMovementSection
             history={historyByMode[mode] ?? null}
             enabledBookKeys={enabledBookKeys}
             persistentHistory={persistentHistoryByMode[mode] === true}
@@ -3411,18 +3429,6 @@ export function OddsDashboard() {
             adpPlatform={activeAdpPlatform}
             anchors={comparedPlayers}
             context={data.adpContext}
-            onCompare={comparePair}
-          />
-        )}
-
-        {mode === "draft" &&
-          draftWorkspace === "value" &&
-          data &&
-          data.players.length > 0 && (
-          <VegasAdpMispricing
-            players={data.players}
-            scoring={scoring}
-            adpPlatform={activeAdpPlatform}
             onCompare={comparePair}
           />
         )}
@@ -3588,6 +3594,24 @@ export function OddsDashboard() {
               {data.sources.map((source) => `${source.label}: ${source.detail}`).join(" · ")}
             </div>
           </section>
+        )}
+
+        {mode === "draft" &&
+          draftWorkspace === "value" &&
+          data &&
+          data.players.length > 0 && (
+          <VegasAdpMispricing
+            players={data.players}
+            scoring={scoring}
+            adpPlatform={activeAdpPlatform}
+            onCompare={comparePair}
+          />
+        )}
+
+        {data &&
+          data.players.length > 0 &&
+          (mode === "weekly" || draftWorkspace === "value") && (
+          <BookDisagreementSection players={data.players} />
         )}
 
         <footer className="mt-10 flex flex-col gap-3 border-t border-[#d1ccc1] pt-5 text-[10px] text-[#747d78] sm:flex-row sm:items-center sm:justify-between">

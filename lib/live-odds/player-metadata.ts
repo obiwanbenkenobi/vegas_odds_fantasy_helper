@@ -277,7 +277,7 @@ const PLATFORM_FORMAT_IDS: Partial<Record<number, LiveScoringSystem>> = {
 };
 
 const PLATFORM_LABELS: Record<AdpPlatform, string> = {
-  consensus: "Consensus",
+  consensus: "DraftSharks consensus",
   sleeper: "Sleeper",
   yahoo: "Yahoo",
   espn: "ESPN",
@@ -431,7 +431,7 @@ export async function getPlayerMetadata(
   const consensusPlatform = consensusContext
     ? {
         key: "consensus" as const,
-        label: "Consensus",
+        label: "FFC consensus",
         source: consensusContext.source,
         url: consensusContext.url,
         updatedAt: consensusContext.updatedAt,
