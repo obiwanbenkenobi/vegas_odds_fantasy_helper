@@ -3409,6 +3409,18 @@ export function OddsDashboard() {
           ) : null}
         </section>
 
+        {mode === "draft" &&
+          draftWorkspace === "value" &&
+          data &&
+          data.players.length > 0 && (
+          <VegasAdpMispricing
+            players={data.players}
+            scoring={scoring}
+            adpPlatform={activeAdpPlatform}
+            onCompare={comparePair}
+          />
+        )}
+
         {data &&
           data.players.length > 0 &&
           (mode === "weekly" || draftWorkspace === "value") && (
@@ -3594,18 +3606,6 @@ export function OddsDashboard() {
               {data.sources.map((source) => `${source.label}: ${source.detail}`).join(" · ")}
             </div>
           </section>
-        )}
-
-        {mode === "draft" &&
-          draftWorkspace === "value" &&
-          data &&
-          data.players.length > 0 && (
-          <VegasAdpMispricing
-            players={data.players}
-            scoring={scoring}
-            adpPlatform={activeAdpPlatform}
-            onCompare={comparePair}
-          />
         )}
 
         {data &&
