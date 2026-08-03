@@ -3,8 +3,9 @@
 Edgeboard is a fantasy-football decision board built from live sportsbook
 quotes. It has two views:
 
-- **Draft board** — puts season-long player lines next to current ADP and finds
-  contextual value alternatives around the players being compared.
+- **Draft board** — separates head-to-head comparison, the market-wide Vegas
+  value board, and the on-the-clock draft assistant into focused workspaces.
+  Contextual value alternatives remain attached to the comparison workspace.
 - **Weekly board** — aggregates game-level player props and team lines for
   start/sit decisions.
 
@@ -49,14 +50,18 @@ moneylines, spreads, and totals. API keys and discovered sportsbook read
 credentials are only used in server modules and are never shipped to the
 browser.
 
-The Draft board supplements sportsbook projections with current 12-team ADP
-from [Fantasy Football Calculator](https://fantasyfootballcalculator.com/adp/ppr).
-That free feed updates daily and is fetched for PPR, half-PPR, and standard
-formats. Player identity and headshots come from Sleeper's public NFL player
-directory. When a player is selected or expanded, the app also loads the three
-most recent completed regular seasons of actual player stats from Sleeper and
-scores them with the selected fantasy format. Neither source replaces the Vegas
-projection; they supply draft price and player context.
+The Draft board supplements sportsbook projections with current 12-team
+consensus ADP from [Fantasy Football Calculator](https://fantasyfootballcalculator.com/adp/ppr)
+and platform-specific ADP from the public
+[Draft Sharks ADP market board](https://www.draftsharks.com/adp). Available
+platforms depend on scoring format: Sleeper supports PPR, half-PPR, and standard;
+ESPN supports PPR; Yahoo supports half-PPR; and CBS supports PPR and standard.
+Changing the platform recalculates every comparison, value match, and draft-room
+recommendation. Player identity and headshots come from Sleeper's public NFL
+player directory. When a player is selected or expanded, the app also loads the
+three most recent completed regular seasons of actual player stats from Sleeper
+and scores them with the selected fantasy format. None of these sources replace
+the Vegas projection; they supply draft price and player context.
 
 Season-long player stat futures are less standardized than weekly props. The
 Draft board merges the direct Bally Bet, BetMGM, BetRivers, DraftKings, FanDuel,

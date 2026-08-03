@@ -1,6 +1,8 @@
 import type {
   AdpContext,
   AdpEntry,
+  AdpPlatform,
+  AdpPlatformContext,
   BoardMode,
   LivePosition,
   LiveScoringSystem,
@@ -10,7 +12,9 @@ import type {
 const SLEEPER_PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl";
 const ADP_BASE_URL = "https://fantasyfootballcalculator.com/api/v1/adp";
 const ADP_SOURCE_URL = "https://fantasyfootballcalculator.com/adp/ppr";
+const PLATFORM_ADP_URL = "https://www.draftsharks.com/adp/yahoo";
 const SLEEPER_CACHE_MS = 86_400_000;
+const PLATFORM_ADP_CACHE_MS = 21_600_000;
 const OFFENSIVE_POSITIONS = new Set<LivePosition>(["QB", "RB", "WR", "TE"]);
 const ADP_FORMATS: Record<LiveScoringSystem, string> = {
   ppr: "ppr",
@@ -27,6 +31,9 @@ interface PlayerProfile {
   headshotUrl?: string;
   sleeperId?: string;
   adp: Partial<Record<LiveScoringSystem, AdpEntry>>;
+  adpByPlatform: Partial<
+    Record<AdpPlatform, Partial<Record<LiveScoringSystem, AdpEntry>>>
+  >;
   active: boolean;
 }
 
@@ -39,13 +46,39 @@ let sleeperProfileCache:
   | { expiresAt: number; profiles: Map<string, PlayerProfile> }
   | undefined;
 
+let platformAdpCache:
+  | {
+      expiresAt: number;
+      entries: Array<{
+        name: string;
+        team?: string;
+        position?: LivePosition;
+        platform: AdpPlatform;
+        scoring: LiveScoringSystem;
+        overall: number;
+        formatted?: string;
+        updatedAt: string;
+      }>;
+      platforms: AdpPlatformContext[];
+    }
+  | undefined;
+
 function cloneProfiles(
   profiles: Map<string, PlayerProfile>,
 ): Map<string, PlayerProfile> {
   return new Map(
     [...profiles].map(([key, profile]) => [
       key,
-      { ...profile, adp: { ...profile.adp } },
+      {
+        ...profile,
+        adp: { ...profile.adp },
+        adpByPlatform: Object.fromEntries(
+          Object.entries(profile.adpByPlatform).map(([platform, adp]) => [
+            platform,
+            { ...adp },
+          ]),
+        ),
+      },
     ]),
   );
 }
@@ -124,6 +157,7 @@ async function getSleeperProfiles(): Promise<Map<string, PlayerProfile>> {
         ? `https://sleepercdn.com/content/nfl/players/${encodeURIComponent(playerId)}.jpg`
         : undefined,
       adp: {},
+      adpByPlatform: {},
       active,
     };
     const current = profiles.get(key);
@@ -199,6 +233,7 @@ async function addAdp(
         team: string(player.team) || undefined,
         position: livePosition(player.position),
         adp: {},
+        adpByPlatform: {},
         active: true,
       };
       profile.team = string(player.team) || profile.team;
@@ -222,7 +257,166 @@ async function addAdp(
     teams: 12,
     updatedAt: updatedAt || new Date().toISOString().slice(0, 10),
     totalDrafts,
+    defaultPlatform: "consensus",
+    platforms: [],
   };
+}
+
+const PLATFORM_SOURCE_IDS: Partial<Record<number, AdpPlatform>> = {
+  104: "consensus",
+  107: "sleeper",
+  109: "yahoo",
+  110: "cbs",
+  111: "espn",
+};
+
+const PLATFORM_FORMAT_IDS: Partial<Record<number, LiveScoringSystem>> = {
+  10: "standard",
+  11: "ppr",
+  18: "half_ppr",
+};
+
+const PLATFORM_LABELS: Record<AdpPlatform, string> = {
+  consensus: "Consensus",
+  sleeper: "Sleeper",
+  yahoo: "Yahoo",
+  espn: "ESPN",
+  cbs: "CBS",
+};
+
+function embeddedAdpPayload(page: string): UnknownRecord {
+  const prefix = "var vueAppData = ";
+  const start = page.indexOf(prefix);
+  if (start < 0) throw new Error("Platform ADP page did not include its data payload");
+  const payloadStart = start + prefix.length;
+  const remainder = page.slice(payloadStart);
+  const endMatch = /;\s*var staticDestinationHash/.exec(remainder);
+  if (!endMatch) throw new Error("Platform ADP payload was incomplete");
+  const payload = record(JSON.parse(remainder.slice(0, endMatch.index)));
+  if (!payload) throw new Error("Platform ADP payload was invalid");
+  return payload;
+}
+
+function platformEntryCache() {
+  if (platformAdpCache && platformAdpCache.expiresAt > Date.now()) {
+    return platformAdpCache;
+  }
+  return null;
+}
+
+async function getPlatformAdpEntries(): Promise<NonNullable<typeof platformAdpCache>> {
+  const cached = platformEntryCache();
+  if (cached) return cached;
+
+  const response = await fetch(PLATFORM_ADP_URL, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": "Edgeboard personal fantasy research tool",
+    },
+    next: { revalidate: 21_600 },
+  });
+  if (!response.ok) {
+    throw new Error(`Platform ADP board returned ${response.status}`);
+  }
+
+  const payload = embeddedAdpPayload(await response.text());
+  const entries: NonNullable<typeof platformAdpCache>["entries"] = [];
+  const playerCounts = new Map<
+    AdpPlatform,
+    Partial<Record<LiveScoringSystem, number>>
+  >();
+  const updatedByPlatform = new Map<AdpPlatform, string>();
+
+  for (const rawProjection of Array.isArray(payload.projections)
+    ? payload.projections
+    : []) {
+    const projection = record(rawProjection);
+    if (!projection) continue;
+    const name = `${string(projection.first_name)} ${string(projection.last_name)}`.trim();
+    if (!name) continue;
+    const team = string(record(projection.team)?.abbr) || undefined;
+    const position = livePosition(projection.fantasy_position ?? projection.position);
+    const adps = record(projection.adps);
+    if (!adps) continue;
+
+    for (const rawAdp of Object.values(adps)) {
+      const adp = record(rawAdp);
+      if (!adp || number(adp.league_size) !== 12) continue;
+      const platform = PLATFORM_SOURCE_IDS[number(adp.source_id) ?? -1];
+      const scoring = PLATFORM_FORMAT_IDS[number(adp.format_id) ?? -1];
+      const overall = number(adp.overall_pick_number);
+      if (!platform || !scoring || overall === null || overall >= 999) continue;
+      const updatedAt = string(adp.create_time) || new Date().toISOString();
+      entries.push({
+        name,
+        team,
+        position,
+        platform,
+        scoring,
+        overall,
+        formatted: string(adp.roundAndPick) || undefined,
+        updatedAt,
+      });
+      const counts = playerCounts.get(platform) ?? {};
+      counts[scoring] = (counts[scoring] ?? 0) + 1;
+      playerCounts.set(platform, counts);
+      if ((updatedByPlatform.get(platform) ?? "") < updatedAt) {
+        updatedByPlatform.set(platform, updatedAt);
+      }
+    }
+  }
+
+  const platforms = (["consensus", "sleeper", "yahoo", "espn", "cbs"] as const)
+    .filter((platform) => playerCounts.has(platform))
+    .map((platform) => ({
+      key: platform,
+      label: PLATFORM_LABELS[platform],
+      source: "Draft Sharks platform ADP board",
+      url: `https://www.draftsharks.com/adp/${platform === "consensus" ? "consensus" : platform}`,
+      updatedAt: (updatedByPlatform.get(platform) ?? new Date().toISOString()).slice(0, 10),
+      playerCounts: playerCounts.get(platform) ?? {},
+    }));
+
+  platformAdpCache = {
+    expiresAt: Date.now() + PLATFORM_ADP_CACHE_MS,
+    entries,
+    platforms,
+  };
+  return platformAdpCache;
+}
+
+async function addPlatformAdp(
+  profiles: Map<string, PlayerProfile>,
+): Promise<AdpPlatformContext[]> {
+  const { entries, platforms } = await getPlatformAdpEntries();
+  for (const entry of entries) {
+    const key = playerNameKey(entry.name);
+    const profile = profiles.get(key) ?? {
+      name: entry.name,
+      team: entry.team,
+      position: entry.position,
+      adp: {},
+      adpByPlatform: {},
+      active: true,
+    };
+    profile.team = entry.team ?? profile.team;
+    profile.position = entry.position ?? profile.position;
+    profile.adpByPlatform[entry.platform] = {
+      ...(profile.adpByPlatform[entry.platform] ?? {}),
+      [entry.scoring]: {
+        overall: entry.overall,
+        formatted: entry.formatted,
+      },
+    };
+    if (entry.platform === "consensus" && !profile.adp[entry.scoring]) {
+      profile.adp[entry.scoring] = {
+        overall: entry.overall,
+        formatted: entry.formatted,
+      };
+    }
+    profiles.set(key, profile);
+  }
+  return platforms;
 }
 
 export async function getPlayerMetadata(
@@ -230,7 +424,50 @@ export async function getPlayerMetadata(
   season: number,
 ): Promise<PlayerMetadataBundle> {
   const profiles = await getSleeperProfiles();
-  const adpContext = mode === "draft" ? await addAdp(profiles, season) : undefined;
+  if (mode !== "draft") return { profiles };
+
+  const consensusContext = await addAdp(profiles, season);
+  const platformContexts = await addPlatformAdp(profiles).catch(() => []);
+  const consensusPlatform = consensusContext
+    ? {
+        key: "consensus" as const,
+        label: "Consensus",
+        source: consensusContext.source,
+        url: consensusContext.url,
+        updatedAt: consensusContext.updatedAt,
+        playerCounts: Object.fromEntries(
+          (Object.keys(ADP_FORMATS) as LiveScoringSystem[]).map((scoring) => [
+            scoring,
+            [...profiles.values()].filter((profile) => profile.adp[scoring]).length,
+          ]),
+        ),
+      }
+    : platformContexts.find((platform) => platform.key === "consensus");
+  const nonConsensusPlatforms = platformContexts.filter(
+    (platform) => platform.key !== "consensus",
+  );
+  const platforms = consensusPlatform
+    ? [consensusPlatform, ...nonConsensusPlatforms]
+    : nonConsensusPlatforms;
+  const latestPlatformDate = platforms.reduce(
+    (latest, platform) => (platform.updatedAt > latest ? platform.updatedAt : latest),
+    "",
+  );
+  const adpContext: AdpContext | undefined =
+    consensusContext || platforms.length > 0
+      ? {
+          source: consensusContext?.source ?? "Draft Sharks platform ADP board",
+          url: consensusContext?.url ?? PLATFORM_ADP_URL,
+          teams: 12,
+          updatedAt:
+            latestPlatformDate ||
+            consensusContext?.updatedAt ||
+            new Date().toISOString().slice(0, 10),
+          totalDrafts: consensusContext?.totalDrafts ?? {},
+          defaultPlatform: "consensus",
+          platforms,
+        }
+      : undefined;
   return { profiles, adpContext };
 }
 
@@ -251,6 +488,7 @@ export function enrichPlayerProjections(
         sleeperId: profile.sleeperId,
       },
       adp: profile.adp,
+      adpByPlatform: profile.adpByPlatform,
     };
   });
 }

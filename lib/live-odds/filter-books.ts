@@ -34,6 +34,7 @@ export function filterDashboardByBooks(
       ...player,
       player: { ...player.player, ...original.player },
       adp: original.adp,
+      adpByPlatform: original.adpByPlatform,
     };
   });
   const gameLines = data.games.flatMap((game) =>

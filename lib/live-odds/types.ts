@@ -15,6 +15,13 @@ export type LiveMarket =
 
 export type LiveScoringSystem = "ppr" | "half_ppr" | "standard";
 
+export type AdpPlatform =
+  | "consensus"
+  | "sleeper"
+  | "yahoo"
+  | "espn"
+  | "cbs";
+
 export interface LiveBook {
   key: string;
   name: string;
@@ -69,6 +76,17 @@ export interface AdpContext {
   teams: number;
   updatedAt: string;
   totalDrafts: Partial<Record<LiveScoringSystem, number>>;
+  defaultPlatform: AdpPlatform;
+  platforms: AdpPlatformContext[];
+}
+
+export interface AdpPlatformContext {
+  key: AdpPlatform;
+  label: string;
+  source: string;
+  url: string;
+  updatedAt: string;
+  playerCounts: Partial<Record<LiveScoringSystem, number>>;
 }
 
 export interface SportsbookQuote {
@@ -141,6 +159,9 @@ export interface PlayerProjection {
   bookCount: number;
   updatedAt: string;
   adp?: Partial<Record<LiveScoringSystem, AdpEntry>>;
+  adpByPlatform?: Partial<
+    Record<AdpPlatform, Partial<Record<LiveScoringSystem, AdpEntry>>>
+  >;
 }
 
 export interface GameSummary {

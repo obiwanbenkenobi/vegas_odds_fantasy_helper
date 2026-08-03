@@ -10,6 +10,7 @@ import {
 } from "@/lib/live-odds/history";
 import { fantasyPointsForLine } from "@/lib/live-odds/scoring";
 import type {
+  AdpPlatform,
   BoardMode,
   ConsensusComponent,
   DashboardResponse,
@@ -27,6 +28,42 @@ const SCORING_OPTIONS: Array<{ value: LiveScoringSystem; label: string }> = [
   { value: "ppr", label: "PPR" },
   { value: "half_ppr", label: "Half PPR" },
   { value: "standard", label: "Standard" },
+];
+
+const ADP_PLATFORM_LABELS: Record<AdpPlatform, string> = {
+  consensus: "Consensus",
+  sleeper: "Sleeper",
+  yahoo: "Yahoo",
+  espn: "ESPN",
+  cbs: "CBS",
+};
+
+type DraftWorkspace = "compare" | "value" | "assistant";
+
+const DRAFT_WORKSPACES: Array<{
+  value: DraftWorkspace;
+  eyebrow: string;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "compare",
+    eyebrow: "Player decisions",
+    label: "Compare players",
+    description: "Head-to-head lines and cheaper lookalikes for your selections.",
+  },
+  {
+    value: "value",
+    eyebrow: "Whole market",
+    label: "Vegas value board",
+    description: "The largest gaps between sportsbook production and draft cost.",
+  },
+  {
+    value: "assistant",
+    eyebrow: "On the clock",
+    label: "Draft room",
+    description: "Best available targets for your pick and roster needs.",
+  },
 ];
 
 function scoringLabel(scoring: LiveScoringSystem): string {
@@ -387,8 +424,20 @@ function PlayerHeadshot({
 function adpFor(
   player: PlayerProjection | null | undefined,
   scoring: LiveScoringSystem,
+  platform: AdpPlatform = "consensus",
 ): number | null {
-  return player?.adp?.[scoring]?.overall ?? null;
+  if (platform === "consensus") {
+    return (
+      player?.adp?.[scoring]?.overall ??
+      player?.adpByPlatform?.consensus?.[scoring]?.overall ??
+      null
+    );
+  }
+  return player?.adpByPlatform?.[platform]?.[scoring]?.overall ?? null;
+}
+
+function adpPlatformLabel(platform: AdpPlatform): string {
+  return ADP_PLATFORM_LABELS[platform];
 }
 
 function formatAdp(value: number | null): string {
@@ -401,6 +450,102 @@ function formatRoundPick(value: number): string {
   const round = Math.floor((rounded - 1) / 12) + 1;
   const pick = ((rounded - 1) % 12) + 1;
   return `${round}.${String(pick).padStart(2, "0")}`;
+}
+
+function DraftWorkspaceNav({
+  active,
+  onChange,
+}: {
+  active: DraftWorkspace;
+  onChange: (workspace: DraftWorkspace) => void;
+}) {
+  return (
+    <nav aria-label="Draft tools" className="mt-7 grid gap-2 md:grid-cols-3">
+      {DRAFT_WORKSPACES.map((workspace, index) => (
+        <button
+          key={workspace.value}
+          type="button"
+          aria-current={active === workspace.value ? "page" : undefined}
+          onClick={() => onChange(workspace.value)}
+          className={`group flex min-h-24 items-start gap-4 rounded-xl border px-4 py-4 text-left transition sm:px-5 ${
+            active === workspace.value
+              ? "border-[#214735] bg-[#214735] text-white shadow-[0_8px_24px_rgba(24,50,38,0.16)]"
+              : "border-[#cec8bd] bg-[#fbfaf6] text-[#1d2a24] hover:border-[#7e8c84] hover:bg-white"
+          }`}
+        >
+          <span
+            className={`mt-0.5 font-mono text-xs ${active === workspace.value ? "text-[#c9ddcf]" : "text-[#9a4a33]"}`}
+          >
+            0{index + 1}
+          </span>
+          <span>
+            <span
+              className={`block text-[9px] font-bold uppercase tracking-[0.1em] ${active === workspace.value ? "text-[#b9cfc2]" : "text-[#7c8580]"}`}
+            >
+              {workspace.eyebrow}
+            </span>
+            <span className="mt-0.5 block text-base font-semibold">
+              {workspace.label}
+            </span>
+            <span
+              className={`mt-1 block text-[11px] leading-4 ${active === workspace.value ? "text-[#dbe7df]" : "text-[#6c7670]"}`}
+            >
+              {workspace.description}
+            </span>
+          </span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function AdpPlatformSelector({
+  context,
+  scoring,
+  value,
+  onChange,
+}: {
+  context: DashboardResponse["adpContext"];
+  scoring: LiveScoringSystem;
+  value: AdpPlatform;
+  onChange: (platform: AdpPlatform) => void;
+}) {
+  const available =
+    context?.platforms.filter((platform) => (platform.playerCounts[scoring] ?? 0) > 0) ?? [];
+  if (available.length === 0) return null;
+
+  return (
+    <section className="mt-4 flex flex-col gap-3 rounded-xl border border-[#d0cbc0] bg-[#fbfaf6] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div>
+        <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#8f4029]">
+          Draft platform
+        </div>
+        <div className="mt-0.5 text-xs text-[#69736d]">
+          Every ADP rank and recommendation below uses the selected draft room.
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="ADP platform">
+        {available.map((platform) => (
+          <button
+            key={platform.key}
+            type="button"
+            aria-pressed={value === platform.key}
+            onClick={() => onChange(platform.key)}
+            className={`rounded-md border px-3 py-2 text-[10px] font-bold transition ${
+              value === platform.key
+                ? "border-[#315c46] bg-[#315c46] text-white"
+                : "border-[#c9c3b8] bg-white text-[#5e6963] hover:border-[#75827b]"
+            }`}
+          >
+            {platform.label}
+            <span className={`ml-1.5 font-mono text-[9px] ${value === platform.key ? "text-[#cde0d4]" : "text-[#919995]"}`}>
+              {platform.playerCounts[scoring]}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function playerPointRange(
@@ -967,12 +1112,14 @@ function PlayerSearch({
   players,
   value,
   scoring,
+  adpPlatform,
   onChange,
 }: {
   label: string;
   players: PlayerProjection[];
   value: string | null;
   scoring: LiveScoringSystem;
+  adpPlatform: AdpPlatform;
   onChange: (value: string | null) => void;
 }) {
   const selected = value
@@ -1066,7 +1213,7 @@ function PlayerSearch({
                     {postedLineSummary(player, 1)[0] ?? "No posted line"}
                   </span>
                   <span className="block text-[9px] text-[#7c8580]">
-                    ADP {formatAdp(adpFor(player, scoring))}
+                    {adpPlatformLabel(adpPlatform)} {formatAdp(adpFor(player, scoring, adpPlatform))}
                   </span>
                 </span>
               </button>
@@ -1086,11 +1233,13 @@ function ComparisonSummary({
   player,
   scoring,
   mode,
+  adpPlatform,
   comparisonMismatch,
 }: {
   player: PlayerProjection | null;
   scoring: LiveScoringSystem;
   mode: BoardMode;
+  adpPlatform: AdpPlatform;
   comparisonMismatch: boolean;
 }) {
   if (!player) {
@@ -1101,7 +1250,7 @@ function ComparisonSummary({
     );
   }
 
-  const adp = adpFor(player, scoring);
+  const adp = adpFor(player, scoring, adpPlatform);
   const pointRange = playerPointRange(player, scoring);
 
   return (
@@ -1164,7 +1313,7 @@ function ComparisonSummary({
         {mode === "draft" && (
           <div className="border-t border-[#e1ddd4] pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
             <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#7c8580]">
-              12-team ADP
+              {adpPlatformLabel(adpPlatform)} ADP
             </div>
             <div className="mt-1 font-mono text-3xl font-semibold text-[#25352d]">
               {formatAdp(adp)}
@@ -1232,6 +1381,7 @@ function ComparisonWorkspace({
   players,
   scoring,
   mode,
+  adpPlatform,
   leftId,
   rightId,
   onSelect,
@@ -1239,6 +1389,7 @@ function ComparisonWorkspace({
   players: PlayerProjection[];
   scoring: LiveScoringSystem;
   mode: BoardMode;
+  adpPlatform: AdpPlatform;
   leftId: string | null;
   rightId: string | null;
   onSelect: (slot: 0 | 1, value: string | null) => void;
@@ -1320,8 +1471,8 @@ function ComparisonWorkspace({
   const bookAvailabilityDiffers =
     leftBooks.size !== rightBooks.size ||
     [...leftBooks].some((book) => !rightBooks.has(book));
-  const leftAdp = adpFor(left, scoring);
-  const rightAdp = adpFor(right, scoring);
+  const leftAdp = adpFor(left, scoring, adpPlatform);
+  const rightAdp = adpFor(right, scoring, adpPlatform);
   const adpDifference =
     leftAdp !== null && rightAdp !== null ? leftAdp - rightAdp : null;
   const leftPointRange = left ? playerPointRange(left, scoring) : null;
@@ -1363,6 +1514,7 @@ function ComparisonWorkspace({
             players={players}
             value={leftId}
             scoring={scoring}
+            adpPlatform={adpPlatform}
             onChange={(value) => onSelect(0, value)}
           />
           <PlayerSearch
@@ -1371,6 +1523,7 @@ function ComparisonWorkspace({
             players={players}
             value={rightId}
             scoring={scoring}
+            adpPlatform={adpPlatform}
             onChange={(value) => onSelect(1, value)}
           />
         </div>
@@ -1380,6 +1533,7 @@ function ComparisonWorkspace({
             player={left}
             scoring={scoring}
             mode={mode}
+            adpPlatform={adpPlatform}
             comparisonMismatch={Boolean(
               left && right && marketAvailabilityDiffers,
             )}
@@ -1388,6 +1542,7 @@ function ComparisonWorkspace({
             player={right}
             scoring={scoring}
             mode={mode}
+            adpPlatform={adpPlatform}
             comparisonMismatch={Boolean(
               left && right && marketAvailabilityDiffers,
             )}
@@ -1502,7 +1657,7 @@ function ComparisonWorkspace({
                 <strong className="font-mono text-[#30463a]">
                   {Math.abs(adpDifference).toFixed(0)} picks
                 </strong>{" "}
-                apart by 12-team ADP
+                apart by {adpPlatformLabel(adpPlatform)} ADP
               </div>
             )}
           </div>
@@ -1634,6 +1789,7 @@ interface DraftValueMatch {
 function contextualDraftMatches(
   players: PlayerProjection[],
   scoring: LiveScoringSystem,
+  adpPlatform: AdpPlatform,
   anchors: Array<PlayerProjection | null>,
 ): DraftValueMatch[] {
   const selected = anchors.filter(
@@ -1644,13 +1800,13 @@ function contextualDraftMatches(
   const matches: DraftValueMatch[] = [];
 
   for (const anchor of selected) {
-    const anchorAdp = adpFor(anchor, scoring);
+    const anchorAdp = adpFor(anchor, scoring, adpPlatform);
     if (anchorAdp === null) continue;
 
     const candidates = players
       .filter((candidate) => !selectedKeys.has(playerKey(candidate)))
       .flatMap((alternative) => {
-        const alternativeAdp = adpFor(alternative, scoring);
+        const alternativeAdp = adpFor(alternative, scoring, adpPlatform);
         const productionGap = productionGapPercent(anchor, alternative, scoring);
         if (alternativeAdp === null || productionGap === null) return [];
         const adpGap = Math.abs(anchorAdp - alternativeAdp);
@@ -1688,15 +1844,17 @@ function contextualDraftMatches(
 function DraftMatchPlayer({
   player,
   scoring,
+  adpPlatform,
   label,
   valueTarget,
 }: {
   player: PlayerProjection;
   scoring: LiveScoringSystem;
+  adpPlatform: AdpPlatform;
   label: string;
   valueTarget: boolean;
 }) {
-  const adp = adpFor(player, scoring) as number;
+  const adp = adpFor(player, scoring, adpPlatform) as number;
   return (
     <div className={`p-4 sm:p-5 ${valueTarget ? "bg-[#e6eee8]" : "bg-[#fbfaf6]"}`}>
       <div className="mb-3 flex min-h-6 items-center">
@@ -1729,7 +1887,7 @@ function DraftMatchPlayer({
           {formatAdp(adp)}
         </div>
         <div className="text-[9px] uppercase tracking-[0.08em] text-[#6f7973]">
-          ADP · round / pick {formatRoundPick(adp)}
+          {adpPlatformLabel(adpPlatform)} ADP · round / pick {formatRoundPick(adp)}
         </div>
       </div>
     </div>
@@ -1739,20 +1897,25 @@ function DraftMatchPlayer({
 function DraftValueTargets({
   players,
   scoring,
+  adpPlatform,
   anchors,
   context,
   onCompare,
 }: {
   players: PlayerProjection[];
   scoring: LiveScoringSystem;
+  adpPlatform: AdpPlatform;
   anchors: Array<PlayerProjection | null>;
   context: DashboardResponse["adpContext"];
   onCompare: (left: PlayerProjection, right: PlayerProjection) => void;
 }) {
   const selectedCount = anchors.filter(Boolean).length;
   const matches = useMemo(
-    () => contextualDraftMatches(players, scoring, anchors),
-    [anchors, players, scoring],
+    () => contextualDraftMatches(players, scoring, adpPlatform, anchors),
+    [adpPlatform, anchors, players, scoring],
+  );
+  const selectedPlatform = context?.platforms.find(
+    (platform) => platform.key === adpPlatform,
   );
 
   return (
@@ -1770,11 +1933,11 @@ function DraftValueTargets({
             Vegas markets, similar production, and at least an eight-pick ADP gap.
           </p>
         </div>
-        {context && (
+        {selectedPlatform && (
           <div className="text-[10px] leading-4 text-[#7a837e] sm:text-right">
-            ADP through {context.updatedAt}
+            {selectedPlatform.label} ADP through {selectedPlatform.updatedAt}
             <br />
-            {formatNumber(context.totalDrafts[scoring] ?? 0, 0)} drafts sampled
+            {formatNumber(selectedPlatform.playerCounts[scoring] ?? 0, 0)} players tracked
           </div>
         )}
       </div>
@@ -1795,6 +1958,7 @@ function DraftValueTargets({
                   <DraftMatchPlayer
                     player={match.anchor}
                     scoring={scoring}
+                    adpPlatform={adpPlatform}
                     label="Selected player"
                     valueTarget={!alternativeIsTarget}
                   />
@@ -1804,6 +1968,7 @@ function DraftValueTargets({
                   <DraftMatchPlayer
                     player={match.alternative}
                     scoring={scoring}
+                    adpPlatform={adpPlatform}
                     label="Closest line match"
                     valueTarget={alternativeIsTarget}
                   />
@@ -1862,12 +2027,13 @@ interface AdpMispricing {
 function calculateAdpMispricings(
   players: PlayerProjection[],
   scoring: LiveScoringSystem,
+  adpPlatform: AdpPlatform,
 ): AdpMispricing[] {
   const groups = new Map<string, PlayerProjection[]>();
 
   for (const player of players) {
     if (
-      adpFor(player, scoring) === null ||
+      adpFor(player, scoring, adpPlatform) === null ||
       player.components.length === 0 ||
       player.bookCount < 2
     ) {
@@ -1883,7 +2049,8 @@ function calculateAdpMispricings(
     if (group.length < 4) return [];
     const byAdp = [...group].sort(
       (left, right) =>
-        (adpFor(left, scoring) as number) - (adpFor(right, scoring) as number),
+        (adpFor(left, scoring, adpPlatform) as number) -
+        (adpFor(right, scoring, adpPlatform) as number),
     );
     const adpRankByPlayer = new Map(
       byAdp.map((player, index) => [playerKey(player), index + 1]),
@@ -1893,9 +2060,9 @@ function calculateAdpMispricings(
     );
 
     return byVegas.flatMap((player, index) => {
-      const actualAdp = adpFor(player, scoring) as number;
+      const actualAdp = adpFor(player, scoring, adpPlatform) as number;
       const benchmark = byAdp[index];
-      const vegasAdp = adpFor(benchmark, scoring) as number;
+      const vegasAdp = adpFor(benchmark, scoring, adpPlatform) as number;
       const pickGap = actualAdp - vegasAdp;
       if (Math.abs(pickGap) < 6) return [];
 
@@ -1998,15 +2165,17 @@ function MispricingList({
 function VegasAdpMispricing({
   players,
   scoring,
+  adpPlatform,
   onCompare,
 }: {
   players: PlayerProjection[];
   scoring: LiveScoringSystem;
+  adpPlatform: AdpPlatform;
   onCompare: (left: PlayerProjection, right: PlayerProjection) => void;
 }) {
   const mispricings = useMemo(
-    () => calculateAdpMispricings(players, scoring),
-    [players, scoring],
+    () => calculateAdpMispricings(players, scoring, adpPlatform),
+    [adpPlatform, players, scoring],
   );
   const values = mispricings
     .filter((item) => item.pickGap > 0)
@@ -2027,7 +2196,7 @@ function VegasAdpMispricing({
           Where the sportsbooks and draft rooms disagree
         </h2>
         <p className="mt-1 text-xs leading-5 text-[#707a74]">
-          Players are ranked only against the same position with the exact same posted market set. The Vegas slot maps that production rank onto the group&apos;s current ADP curve.
+          Players are ranked only against the same position with the exact same posted market set. The Vegas slot maps that production rank onto the current {adpPlatformLabel(adpPlatform)} ADP curve.
         </p>
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
@@ -2057,10 +2226,12 @@ const DRAFT_POSITIONS: LivePosition[] = ["QB", "RB", "WR", "TE"];
 function DraftAssistant({
   players,
   scoring,
+  adpPlatform,
   onCompare,
 }: {
   players: PlayerProjection[];
   scoring: LiveScoringSystem;
+  adpPlatform: AdpPlatform;
   onCompare: (left: PlayerProjection, right: PlayerProjection) => void;
 }) {
   const [currentPick, setCurrentPick] = useState(1);
@@ -2100,15 +2271,15 @@ function DraftAssistant({
   }, [currentPick, needs, planLoaded]);
 
   const mispricings = useMemo(
-    () => calculateAdpMispricings(players, scoring),
-    [players, scoring],
+    () => calculateAdpMispricings(players, scoring, adpPlatform),
+    [adpPlatform, players, scoring],
   );
   const mispricingByPlayer = new Map(
     mispricings.map((item) => [playerKey(item.player), item]),
   );
   const recommendations = players
     .flatMap((player) => {
-      const adp = adpFor(player, scoring);
+      const adp = adpFor(player, scoring, adpPlatform);
       if (
         adp === null ||
         !needs.includes(player.player.position) ||
@@ -2729,6 +2900,9 @@ function serverHistoryState(
 export function OddsDashboard() {
   const [mode, setMode] = useState<BoardMode>("draft");
   const [scoring, setScoring] = useState<LiveScoringSystem>("ppr");
+  const [adpPlatform, setAdpPlatform] = useState<AdpPlatform>("consensus");
+  const [draftWorkspace, setDraftWorkspace] =
+    useState<DraftWorkspace>("compare");
   const [position, setPosition] = useState<LivePosition | "ALL">("ALL");
   const [query, setQuery] = useState("");
   const [dataByMode, setDataByMode] = useState<
@@ -2766,6 +2940,21 @@ export function OddsDashboard() {
         ? filterDashboardByBooks(rawData, enabledBookKeys)
         : null,
     [enabledBookKeys, rawData],
+  );
+  const availableAdpPlatforms = useMemo(
+    () =>
+      data?.adpContext?.platforms.filter(
+        (platform) => (platform.playerCounts[scoring] ?? 0) > 0,
+      ) ?? [],
+    [data?.adpContext?.platforms, scoring],
+  );
+  const activeAdpPlatform = availableAdpPlatforms.some(
+    (platform) => platform.key === adpPlatform,
+  )
+    ? adpPlatform
+    : (availableAdpPlatforms[0]?.key ?? "consensus");
+  const activeAdpContext = data?.adpContext?.platforms.find(
+    (platform) => platform.key === activeAdpPlatform,
   );
   const comparisonPlayers = useMemo(() => {
     const activePlayers = new Map(
@@ -2915,13 +3104,13 @@ export function OddsDashboard() {
       .filter((player) => playerMatchesSearch(player, query))
       .sort((a, b) => {
         if (mode === "weekly") return b.points[scoring] - a.points[scoring];
-        const leftAdp = adpFor(a, scoring);
-        const rightAdp = adpFor(b, scoring);
+        const leftAdp = adpFor(a, scoring, activeAdpPlatform);
+        const rightAdp = adpFor(b, scoring, activeAdpPlatform);
         if (leftAdp === null) return 1;
         if (rightAdp === null) return -1;
         return leftAdp - rightAdp;
       });
-  }, [data?.players, mode, position, query, scoring]);
+  }, [activeAdpPlatform, data?.players, mode, position, query, scoring]);
 
   const activeCompareIds = compareIds.map(normalizeSelectionKey) as [
     string | null,
@@ -2962,6 +3151,7 @@ export function OddsDashboard() {
 
   const comparePair = (left: PlayerProjection, right: PlayerProjection) => {
     setCompareIds([playerKey(left), playerKey(right)]);
+    if (mode === "draft") setDraftWorkspace("compare");
     window.setTimeout(
       () =>
         document
@@ -3077,6 +3267,21 @@ export function OddsDashboard() {
           />
         )}
 
+        {mode === "draft" && data && data.players.length > 0 && (
+          <>
+            <DraftWorkspaceNav
+              active={draftWorkspace}
+              onChange={setDraftWorkspace}
+            />
+            <AdpPlatformSelector
+              context={data.adpContext}
+              scoring={scoring}
+              value={activeAdpPlatform}
+              onChange={setAdpPlatform}
+            />
+          </>
+        )}
+
         <section className="mt-8">
           {error && (
             <div className="mb-5 border-l-4 border-[#a3412b] bg-[#f2ded7] px-4 py-3 text-sm text-[#7f3020]">
@@ -3099,21 +3304,26 @@ export function OddsDashboard() {
             </div>
           ) : loading && !data ? (
             <LoadingBoard />
-          ) : data && (rawData?.players.length ?? 0) > 0 ? (
+          ) : data &&
+            (rawData?.players.length ?? 0) > 0 &&
+            (mode === "weekly" || draftWorkspace === "compare") ? (
             <ComparisonWorkspace
               players={comparisonPlayers}
               scoring={scoring}
               mode={mode}
+              adpPlatform={activeAdpPlatform}
               leftId={activeCompareIds[0]}
               rightId={activeCompareIds[1]}
               onSelect={selectComparison}
             />
-          ) : data ? (
+          ) : data && (rawData?.players.length ?? 0) === 0 ? (
             <ProviderState data={data} />
           ) : null}
         </section>
 
-        {data && data.players.length > 0 && (
+        {data &&
+          data.players.length > 0 &&
+          (mode === "weekly" || draftWorkspace === "value") && (
           <MarketIntelligence
             players={data.players}
             history={historyByMode[mode] ?? null}
@@ -3122,28 +3332,40 @@ export function OddsDashboard() {
           />
         )}
 
-        {mode === "draft" && data && data.players.length > 0 && (
+        {mode === "draft" &&
+          draftWorkspace === "compare" &&
+          data &&
+          data.players.length > 0 && (
           <DraftValueTargets
             players={data.players}
             scoring={scoring}
+            adpPlatform={activeAdpPlatform}
             anchors={comparedPlayers}
             context={data.adpContext}
             onCompare={comparePair}
           />
         )}
 
-        {mode === "draft" && data && data.players.length > 0 && (
+        {mode === "draft" &&
+          draftWorkspace === "value" &&
+          data &&
+          data.players.length > 0 && (
           <VegasAdpMispricing
             players={data.players}
             scoring={scoring}
+            adpPlatform={activeAdpPlatform}
             onCompare={comparePair}
           />
         )}
 
-        {mode === "draft" && data && data.players.length > 0 && (
+        {mode === "draft" &&
+          draftWorkspace === "assistant" &&
+          data &&
+          data.players.length > 0 && (
           <DraftAssistant
             players={data.players}
             scoring={scoring}
+            adpPlatform={activeAdpPlatform}
             onCompare={comparePair}
           />
         )}
@@ -3306,12 +3528,12 @@ export function OddsDashboard() {
               <>
                 {" "}ADP by{" "}
                 <a
-                  href={data?.adpContext?.url ?? "https://fantasyfootballcalculator.com/adp/ppr"}
+                  href={activeAdpContext?.url ?? data?.adpContext?.url ?? "https://fantasyfootballcalculator.com/adp/ppr"}
                   target="_blank"
                   rel="noreferrer"
                   className="underline decoration-[#a8aea9] underline-offset-2 hover:text-[#27332d]"
                 >
-                  Fantasy Football Calculator
+                  {activeAdpContext?.source ?? "Fantasy Football Calculator"}
                 </a>
                 .
               </>
