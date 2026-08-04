@@ -2,6 +2,11 @@
 
 import Image from "next/image";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  adpFor,
+  adpScoringForPlatform,
+  usesPprAdpFallback,
+} from "@/lib/live-odds/adp";
 import { filterDashboardByBooks } from "@/lib/live-odds/filter-books";
 import {
   captureLineHistory,
@@ -9,6 +14,11 @@ import {
   type LineHistoryState,
 } from "@/lib/live-odds/history";
 import { fantasyPointsForLine } from "@/lib/live-odds/scoring";
+import {
+  calculateVegasValueEdges,
+  type VegasValueEdge,
+  type VegasValueScope,
+} from "@/lib/live-odds/value-edges";
 import type {
   AdpPlatform,
   BoardMode,
@@ -56,7 +66,7 @@ const DRAFT_WORKSPACES: Array<{
     value: "value",
     eyebrow: "Live books",
     label: "Market signals",
-    description: "Track line movement and disagreement between sportsbooks.",
+    description: "Find coverage-qualified ADP values and track sportsbook movement.",
   },
   {
     value: "assistant",
@@ -419,42 +429,6 @@ function PlayerHeadshot({
       )}
     </div>
   );
-}
-
-function adpFor(
-  player: PlayerProjection | null | undefined,
-  scoring: LiveScoringSystem,
-  platform: AdpPlatform = "consensus",
-): number | null {
-  const adpScoring = adpScoringForPlatform(platform, scoring);
-  if (platform === "consensus") {
-    return (
-      player?.adp?.[adpScoring]?.overall ??
-      player?.adpByPlatform?.consensus?.[adpScoring]?.overall ??
-      null
-    );
-  }
-  return player?.adpByPlatform?.[platform]?.[adpScoring]?.overall ?? null;
-}
-
-function adpScoringForPlatform(
-  platform: AdpPlatform,
-  scoring: LiveScoringSystem,
-): LiveScoringSystem {
-  if (
-    scoring === "half_ppr" &&
-    (platform === "espn" || platform === "cbs")
-  ) {
-    return "ppr";
-  }
-  return scoring;
-}
-
-function usesPprAdpFallback(
-  platform: AdpPlatform,
-  scoring: LiveScoringSystem,
-): boolean {
-  return scoring === "half_ppr" && adpScoringForPlatform(platform, scoring) === "ppr";
 }
 
 function adpPlatformLabel(
@@ -2073,6 +2047,188 @@ function DraftValueTargets({
   );
 }
 
+const VALUE_SCOPE_LABELS: Record<VegasValueScope, string> = {
+  full: "Full profile",
+  passing: "Passing markets",
+  rushing: "Rushing markets",
+  receiving: "Receiving markets",
+};
+
+function percentileLabel(value: number): string {
+  const rounded = Math.round(value);
+  const remainder = rounded % 100;
+  const suffix =
+    remainder >= 11 && remainder <= 13
+      ? "th"
+      : rounded % 10 === 1
+        ? "st"
+        : rounded % 10 === 2
+          ? "nd"
+          : rounded % 10 === 3
+            ? "rd"
+            : "th";
+  return `${rounded}${suffix}`;
+}
+
+function valueScopeLabel(item: VegasValueEdge): string {
+  if (item.scope === "receiving" && item.signals.length === 1) {
+    return "Receiving-yard market";
+  }
+  return VALUE_SCOPE_LABELS[item.scope];
+}
+
+function VegasValueCard({ item }: { item: VegasValueEdge }) {
+  const positionRank = item.adp.positionRank ?? 0;
+
+  return (
+    <article className="border-b border-[#ded9cf] p-5 sm:border-r xl:[&:nth-child(3n)]:border-r-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <PlayerHeadshot player={item.player.player} size="sm" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-[#19261f]">
+              {item.player.player.name}
+            </div>
+            <div className="mt-0.5 text-[10px] text-[#747d78]">
+              {item.player.player.position} · {item.player.player.team ?? "Team pending"} · {item.bookCount}+ active books
+            </div>
+          </div>
+        </div>
+        <span
+          className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-[0.06em] ${
+            item.scope === "full"
+              ? "border-[#8fb19d] bg-[#e5eee7] text-[#2e674a]"
+              : "border-[#c9bda8] bg-[#f2ede4] text-[#74634d]"
+          }`}
+        >
+          {valueScopeLabel(item)}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-end justify-between border-y border-[#e2ded5] py-3">
+        <div>
+          <div className="font-mono text-2xl font-semibold text-[#2e674a]">
+            +{item.edge.toFixed(0)}
+          </div>
+          <div className="text-[8px] uppercase tracking-[0.07em] text-[#858d88]">
+            percentile-point edge
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-right">
+          <div>
+            <div className="font-mono text-sm font-semibold text-[#25352d]">
+              {percentileLabel(item.vegasPercentile)}
+            </div>
+            <div className="text-[8px] uppercase tracking-[0.06em] text-[#858d88]">Vegas</div>
+          </div>
+          <div>
+            <div className="font-mono text-sm font-semibold text-[#7d4a37]">
+              {percentileLabel(item.draftPercentile)}
+            </div>
+            <div className="text-[8px] uppercase tracking-[0.06em] text-[#858d88]">Draft</div>
+          </div>
+          <div>
+            <div className="font-mono text-sm font-semibold text-[#25352d]">
+              {formatAdp(item.adp.overall)}
+            </div>
+            <div className="text-[8px] uppercase tracking-[0.06em] text-[#858d88]">
+              ADP · {item.player.player.position}{positionRank}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-1 text-[10px] leading-4 text-[#68736d]">
+        {item.signals.map((signal) => (
+          <div key={signal.market} className="flex items-center justify-between gap-3">
+            <span>
+              {signal.label} · {formatNumber(signal.line)}
+            </span>
+            <span className="shrink-0 font-mono text-[#3c4b43]">
+              {percentileLabel(signal.percentile)} pct · {signal.playerCount}-player pool
+            </span>
+          </div>
+        ))}
+      </div>
+      {item.wideBookRange && (
+        <div className="mt-3 text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9a4a33]">
+          Wide range between books—inspect before relying on this signal
+        </div>
+      )}
+    </article>
+  );
+}
+
+function VegasValueBoard({
+  players,
+  scoring,
+  adpPlatform,
+}: {
+  players: PlayerProjection[];
+  scoring: LiveScoringSystem;
+  adpPlatform: AdpPlatform;
+}) {
+  const edges = useMemo(
+    () => calculateVegasValueEdges(players, scoring, adpPlatform),
+    [adpPlatform, players, scoring],
+  );
+  const fullProfiles = edges.filter((item) => item.scope === "full").slice(0, 6);
+  const categorySignals = edges.filter((item) => item.scope !== "full").slice(0, 9);
+
+  return (
+    <section className="mt-10 overflow-hidden rounded-xl border border-[#d2cdc2] bg-[#fbfaf6]">
+      <div className="border-b border-[#d2cdc2] bg-[#e5eee7] px-5 py-5 sm:px-6">
+        <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#2e674a]">
+          Vegas-backed ADP values
+        </div>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#16231d]">
+          Where posted markets run ahead of draft cost
+        </h2>
+        <p className="mt-1 max-w-3xl text-xs leading-5 text-[#68736d]">
+          Scoring-impact-weighted Vegas percentiles compare each market with every same-position player supported by at least three active books. Draft percentiles use the full {adpPlatformLabel(adpPlatform, scoring)} position pool. Only gaps of 10 percentile points or more appear.
+        </p>
+      </div>
+
+      {fullProfiles.length > 0 && (
+        <div>
+          <div className="border-b border-[#ded9cf] bg-[#f3f5ef] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.08em] text-[#4f6659] sm:px-6">
+            Full profiles · every core fantasy market is represented
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3">
+            {fullProfiles.map((item) => (
+              <VegasValueCard key={playerKey(item.player)} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {categorySignals.length > 0 && (
+        <div>
+          <div className="border-b border-[#ded9cf] bg-[#f2ede4] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.08em] text-[#74634d] sm:px-6">
+            Category signals · evidence for the named markets, not a complete fantasy projection
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3">
+            {categorySignals.map((item) => (
+              <VegasValueCard key={playerKey(item.player)} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {edges.length === 0 && (
+        <div className="px-6 py-10 text-center text-sm text-[#747d78]">
+          No coverage-qualified Vegas edge clears the 10-point threshold for this scoring and draft platform.
+        </div>
+      )}
+      {fullProfiles.length === 0 && categorySignals.length > 0 && (
+        <div className="border-t border-[#ded9cf] bg-[#f7f4ee] px-5 py-3 text-[10px] leading-4 text-[#786b58] sm:px-6">
+          No full-profile value qualifies yet because the active books have not posted every core market. Category signals remain intentionally limited to their named evidence.
+        </div>
+      )}
+    </section>
+  );
+}
+
 const DRAFT_POSITIONS: LivePosition[] = ["QB", "RB", "WR", "TE"];
 
 function DraftAssistant({
@@ -3181,6 +3337,17 @@ export function OddsDashboard() {
             <ProviderState data={data} />
           ) : null}
         </section>
+
+        {mode === "draft" &&
+          draftWorkspace === "value" &&
+          data &&
+          data.players.length > 0 && (
+          <VegasValueBoard
+            players={data.players}
+            scoring={scoring}
+            adpPlatform={activeAdpPlatform}
+          />
+        )}
 
         {data &&
           data.players.length > 0 &&

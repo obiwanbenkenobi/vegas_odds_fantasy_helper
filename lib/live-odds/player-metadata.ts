@@ -419,6 +419,44 @@ async function addPlatformAdp(
   return platforms;
 }
 
+function assignPositionRanks(profiles: Map<string, PlayerProfile>): void {
+  const platforms: AdpPlatform[] = [
+    "consensus",
+    "sleeper",
+    "yahoo",
+    "espn",
+    "cbs",
+  ];
+
+  for (const platform of platforms) {
+    for (const scoring of Object.keys(ADP_FORMATS) as LiveScoringSystem[]) {
+      const byPosition = new Map<LivePosition, AdpEntry[]>();
+
+      for (const profile of profiles.values()) {
+        if (!profile.position) continue;
+        const entry =
+          platform === "consensus"
+            ? profile.adp[scoring] ??
+              profile.adpByPlatform.consensus?.[scoring]
+            : profile.adpByPlatform[platform]?.[scoring];
+        if (!entry) continue;
+        const values = byPosition.get(profile.position) ?? [];
+        values.push(entry);
+        byPosition.set(profile.position, values);
+      }
+
+      for (const entries of byPosition.values()) {
+        entries
+          .sort((left, right) => left.overall - right.overall)
+          .forEach((entry, index) => {
+            entry.positionRank = index + 1;
+            entry.positionCount = entries.length;
+          });
+      }
+    }
+  }
+}
+
 export async function getPlayerMetadata(
   mode: BoardMode,
   season: number,
@@ -428,6 +466,7 @@ export async function getPlayerMetadata(
 
   const consensusContext = await addAdp(profiles, season);
   const platformContexts = await addPlatformAdp(profiles).catch(() => []);
+  assignPositionRanks(profiles);
   const consensusPlatform = consensusContext
     ? {
         key: "consensus" as const,

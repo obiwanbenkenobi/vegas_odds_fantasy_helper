@@ -69,6 +69,8 @@ export interface AdpEntry {
   high?: number;
   low?: number;
   deviation?: number;
+  positionRank?: number;
+  positionCount?: number;
 }
 
 export interface AdpContext {

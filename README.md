@@ -20,6 +20,16 @@ available markets as a full-season fantasy projection. ADP alternatives require
 the same position and posted-market set and are generated only around players
 selected in the comparison workspace.
 
+The market-signals workspace compares each qualifying prop with every
+same-position player supported by at least three active sportsbooks. It combines
+those market percentiles with scoring-impact weights and compares the result
+with the player's positional percentile across the selected platform's complete
+ADP pool. A full-profile value requires every core fantasy market for the
+position; otherwise the board labels the result as a passing, rushing, or
+receiving category signal rather than a complete projection. Stale quotes are
+excluded, wide book ranges are flagged, and only gaps of at least ten percentile
+points are shown.
+
 ## Live provider setup
 
 Copy `.env.example` to `.env.local` and add at least one server-side key:
